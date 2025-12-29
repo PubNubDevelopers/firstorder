@@ -1,0 +1,31 @@
+[build]
+  # Build command for Vite client
+  command = "cd client && npm install && npm run build"
+  # Directory to publish (Vite's dist folder)
+  publish = "client/dist"
+  # Functions directory for serverless functions
+  functions = "netlify/functions"
+
+[dev]
+  # Local dev server command
+  command = "cd client && npm run dev"
+  # Port for local dev server
+  targetPort = 5173
+  # Netlify Dev port
+  port = 8888
+  # Auto open browser
+  autoLaunch = false
+
+[[redirects]]
+  # Redirect all API calls to serverless functions
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[headers]]
+  # Enable CORS for API endpoints
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"

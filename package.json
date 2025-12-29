@@ -1,0 +1,26 @@
+{
+  "name": "swapit",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "netlify deploy --prod",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Craig Conover <craig@pubnub.com>",
+  "license": "MIT",
+  "description": "First Order - Multiplayer tile-swapping puzzle game built with PubNub",
+  "dependencies": {
+    "pubnub": "^10.2.5",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "netlify-cli": "^17.38.1",
+    "vite": "^7.3.0"
+  }
+}

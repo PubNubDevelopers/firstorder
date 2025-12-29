@@ -1,0 +1,9 @@
+{
+  "name": "firstorder-functions",
+  "version": "1.0.0",
+  "description": "Netlify serverless functions for First Order game",
+  "private": true,
+  "dependencies": {
+    "pubnub": "^10.2.5"
+  }
+}

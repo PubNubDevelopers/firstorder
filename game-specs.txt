@@ -1,0 +1,396 @@
+PubNub channel topology
+PubNub channel topology (MVP, finalized)
+Identifiers
+●	gameId: 8-char random alphanumeric (example: A7K2Q9XJ) 
+●	playerId: unique per player (UUID or short random; your choice) 
+
+Channel 1: Player moves (input)
+game.[gameId]
+Who publishes: Player clients  Who processes: PubNub Functions “Before Publish” bound to game.*  Who subscribes (clients): Optional (not required for MVP)
+Purpose
+●	Players publish their move intents (swap / resulting positions). 
+●	The Before Publish function: 
+○	validates move + game state (KV Store) 
+○	updates KV Store (player board, move count, correctness history, timestamps) 
+○	determines win + lockout 
+○	publishes the authoritative “progress/event” message to admin.[gameId] 
+Key MVP rule
+●	After GAME_OVER (KV: locked), the function blocks/ignores any further moves. 
+
+Channel 2: Admin broadcast (output)
+admin.[gameId]
+Who publishes: PubNub Functions (from the Before Publish handler)  Who subscribes: All player clients (direct subscribe; multiplex is fine)  Purpose
+●	The only channel players must subscribe to during gameplay. 
+●	Broadcasts everything players need to render: 
+○	countdown + start 
+○	full per-player boards + correctness history (you confirmed shared visibility is OK) 
+○	winner + lockout + end messages 
+
+Functions and state (where logic lives)
+A) Before Publish Function
+Binding: channel pattern game.*  Responsibilities (MVP):
+●	Load game + player state from KV Store 
+●	Validate: 
+○	game exists, started/locked flags 
+○	player is part of roster (no late joins) 
+○	move payload is well-formed 
+●	Apply swap, increment moves, compute correctness count, append correctness history 
+●	If correctness == 4: 
+○	set game locked 
+○	record winner using PubNub 17-digit timetoken ordering 
+○	publish GAME_OVER to admin.[gameId] 
+●	Else publish PROGRESS_UPDATE (or equivalent) to admin.[gameId] 
+B) KV Store (single source of truth)
+●	Stores: 
+○	goal order 
+○	per-player current board 
+○	per-player moves + correctness history 
+○	started/locked flags 
+○	roster (fixed at start; no late joins) 
+○	winner (when set) 
+
+Client subscription model
+●	Subscribe to exactly: admin.[gameId] 
+●	Publish moves to: game.[gameId] 
+●	No Presence, no PAM, no channel groups, no wildcard subscribe (per your MVP constraints).
+
+Message Schemas
+Finalized Decisions (Locked)
+●	Tile IDs: 0–3 (confirmed) 
+●	Emoji mapping: sent at GAME_START 
+●	Goal order: 
+○	❌ Never sent to clients during gameplay 
+○	✅ Sent only in GAME_OVER 
+●	Initial order: 
+○	Same for all players 
+○	Guaranteed 0 positions correct 
+●	Move processing: 
+○	Client publishes → game.[gameId] 
+○	Before Publish Function processes + mutates KV 
+●	Progress updates: 
+○	Sent to game.[gameId] 
+○	One player per message (no full snapshots) 
+●	Game over: 
+○	Winner ID + goal order only 
+●	Post-game moves: silently ignored 
+No ambiguity remains.
+
+📡 Final Message Contract Summary (Canonical)
+Channel: game.[gameId]
+MOVE_SUBMIT (client → function)
+{
+  "v": 1,
+  "type": "MOVE_SUBMIT",
+  "gameId": "A7K2Q9XJ",
+  "playerId": "p1",
+  "order": { "a": 1, "b": 3, "c": 2, "d": 0 },
+  "clientMoveSeq": 8,
+  "ts": 1766512345678
+}
+
+Rules enforced by Before Publish:
+●	Order must be a permutation of {0,1,2,3} 
+●	Game must be LIVE 
+●	Move increments player move count 
+●	Positions compared against hidden goal order 
+●	Ignore entirely if game is LOCKED 
+
+PROGRESS_UPDATE (function → game channel)
+{
+  "v": 1,
+  "type": "PROGRESS_UPDATE",
+  "gameId": "A7K2Q9XJ",
+  "playerId": "p1",
+  "moveCount": 8,
+  "positionsCorrect": 3,
+  "moveTT": "17665123456799999"
+}
+
+Clients use this to:
+●	Update scoreboard 
+●	Append correctness history 
+●	Detect “someone finished” indirectly (but not winner yet) 
+
+Channel: admin.[gameId]
+GAME_START
+{
+  "v": 1,
+  "type": "GAME_START",
+  "gameId": "A7K2Q9XJ",
+  "phase": "LIVE",
+  "tiles": {
+    "0": "🍕",
+    "1": "🚀",
+    "2": "🐶",
+    "3": "🎸"
+  },
+  "initialOrder": { "a": 2, "b": 0, "c": 3, "d": 1 },
+  "startTT": "17665123456789012"
+}
+
+✔ Goal order not included
+
+GAME_OVER
+{
+  "v": 1,
+  "type": "GAME_OVER",
+  "gameId": "A7K2Q9XJ",
+  "phase": "LOCKED",
+  "winnerPlayerId": "p2",
+  "goalOrder": { "a": 0, "b": 1, "c": 2, "d": 3 },
+  "winTT": "17665123456800001"
+}
+
+✔ First and only time the goal order is revealed  ✔ Used by losing clients to overlay the solution
+
+🔒 At This Point
+You now have:
+●	A minimal, non-overengineered PubNub topology 
+●	Before Publish–centric authority 
+●	Deterministic multiplayer resolution 
+●	Schemas Claude can implement without inventing behavior
+
+Server State Machines (Final MVP)
+Server State Machines (Final MVP)
+Channels recap
+●	game.[gameId]: client publishes MOVE_SUBMIT and START_GAME; Function publishes PROGRESS_UPDATE (back to same channel) 
+●	admin.[gameId]: Function publishes COUNTDOWN (optional), GAME_START, GAME_OVER 
+Everything is KV-backed and Before Publish is bound to game.*.
+
+1) Game lifecycle state machine
+States
+●	CREATED: game exists, roster set (or still being assembled), not started 
+●	LIVE: accepts moves 
+●	LOCKED: game over; ignore everything 
+(Countdown is an action sequence, not a required state.)
+Transitions
+CREATED → LIVE (triggered by START_GAME from any player)
+Trigger message: START_GAME published to game.[gameId] by any player.
+Guard conditions (KV):
+●	game.phase == CREATED 
+●	playerId ∈ game.players (or ignore if not in roster) 
+Actions (atomic intent; best-effort KV):
+1.	Generate tiles mapping (tileId 0–3 → emoji) 
+2.	Generate goalOrder (hidden) 
+3.	Generate initialOrder such that: 
+○	It is a permutation of {0,1,2,3} 
+○	It has 0 positions correct vs goalOrder 
+○	It is the same initialOrder for all players 
+4.	Initialize each player record: 
+○	moveCount = 0 
+○	currentOrder = initialOrder 
+○	correctnessHistory = [] 
+○	positionsCorrect = 0 
+○	finished = false, finishTT = null 
+5.	Publish to admin.[gameId]: 
+○	optional countdown ticks 
+○	GAME_START with {tiles, initialOrder, startTT} 
+6.	Update game KV: 
+○	phase = LIVE 
+○	startTT = <GAME_START publish timetoken> 
+Idempotency / race handling (since anyone can start):
+●	If multiple START_GAME messages arrive close together: 
+○	Only the first one that observes phase == CREATED performs initialization. 
+○	Others see phase != CREATED and are ignored. 
+
+LIVE → LOCKED (triggered by a winning MOVE_SUBMIT)
+Trigger: a processed move yields positionsCorrect == 4.
+Guard:
+●	game.phase == LIVE 
+Actions:
+1.	Mark player finished: 
+○	finished = true 
+○	finishTT = moveTT 
+2.	Winner resolution: 
+○	If game.winnerPlayerId is null: set winner to this player with winTT = moveTT 
+○	If somehow already set: keep the earliest winTT (lower timetoken) 
+3.	Lock: 
+○	game.phase = LOCKED 
+○	game.lockedTT = nowTT 
+4.	Publish GAME_OVER to admin.[gameId] containing: 
+○	winnerPlayerId 
+○	goalOrder (first time revealed) 
+○	winTT 
+5.	After lock, ignore all future messages on game.[gameId] (moves or start attempts) 
+
+2) Before Publish handler state machine (bound to game.*)
+The handler inspects message.type and routes logic:
+Event types handled on game.[gameId]
+●	START_GAME (client →) 
+●	MOVE_SUBMIT (client →) 
+●	PROGRESS_UPDATE (function →, but you can ignore/let pass through) 
+A) START_GAME processing
+Input:
+{ "v":1, "type":"START_GAME", "gameId":"A7K2Q9XJ", "playerId":"p1" }
+
+Algorithm (summary):
+1.	Load game from KV 
+2.	If missing OR phase != CREATED: ignore 
+3.	If playerId not in roster: ignore 
+4.	Initialize game + players as described above 
+5.	Publish GAME_START (and optional countdown) on admin.[gameId] 
+6.	Set phase=LIVE 
+Output messages:
+●	Only admin.[gameId] gets lifecycle events. 
+
+B) MOVE_SUBMIT processing
+Input: (full order submission)
+{
+  "v": 1,
+  "type": "MOVE_SUBMIT",
+  "gameId": "A7K2Q9XJ",
+  "playerId": "p1",
+  "order": { "a": 1, "b": 3, "c": 2, "d": 0 }
+}
+
+Guards (ignore if any fail):
+●	game exists 
+●	game.phase == LIVE 
+●	playerId in roster 
+●	order is a valid permutation of {0,1,2,3} 
+Actions:
+1.	player.currentOrder = order 
+2.	player.moveCount += 1 
+3.	positionsCorrect = matchCount(order, goalOrder) 
+4.	Append to player.correctnessHistory 
+5.	Persist player KV 
+6.	Publish PROGRESS_UPDATE to game.[gameId]: 
+○	{playerId, moveCount, positionsCorrect, moveTT} 
+If positionsCorrect == 4:
+●	Lock game + publish GAME_OVER to admin.[gameId] as described. 
+Post-game:
+●	If game.phase == LOCKED: ignore silently (your rule #2). 
+
+3) Minimal START_GAME message contract (new)
+On game.[gameId]
+{
+  "v": 1,
+  "type": "START_GAME",
+  "gameId": "A7K2Q9XJ",
+  "playerId": "p1",
+  "ts": 1766512345678
+}
+
+No response on game for start; clients wait for GAME_START on admin.
+
+4) Client UI state machine expectations (for implementation clarity)
+Lobby/Pre-start
+●	Subscribe to: 
+○	admin.[gameId] 
+○	game.[gameId] (for progress updates later; can subscribe now or on start) 
+●	Show “Start Game” button 
+●	On click: 
+○	publish START_GAME to game.[gameId] 
+●	Wait for GAME_START on admin.[gameId] 
+Live
+●	Render tiles + initial order from GAME_START 
+●	On move completion: 
+○	publish MOVE_SUBMIT with full order 
+●	Update scoreboard/history on each PROGRESS_UPDATE from game.[gameId] 
+Locked
+●	On GAME_OVER from admin.[gameId]: 
+○	disable input 
+○	overlay goalOrder over each player’s last known order 
+○	show win/lose message 
+
+
+Claude Guardrail Checklist
+Claude Guardrail Checklist (Swap It! MVP)
+A) Do-not-drift scope locks
+●	Implement only the MVP features explicitly specified.
+●	Do not add: auth, PAM, presence, channel groups, wildcards, leaderboards, storage beyond KV, spectator mode, replays.
+●	Keep exactly two channels:
+○	game.[gameId]
+○	admin.[gameId]
+●	Use PubNub MCP servers for all PubNub provisioning/config (account/keyset/functions/KV).
+●	Do not hardcode PubNub keys; assume MCP provisions securely.
+B) Message schema compliance (no “creative” fields)
+●	Every message includes: v, type, gameId.
+●	Enforce tile IDs are 0–3 everywhere (KV, orders, comparisons, UI).
+●	MOVE_SUBMIT must send full order only (no swap field).
+●	PROGRESS_UPDATE must include only:
+○	playerId
+○	moveCount
+○	positionsCorrect
+○	moveTT
+○	(plus v/type/gameId)
+●	GAME_START must include:
+○	tiles mapping 0–3 -> emoji
+○	initialOrder
+○	startTT
+○	phase: LIVE
+●	GAME_OVER must include:
+○	winnerPlayerId
+○	goalOrder
+○	winTT
+○	phase: LOCKED
+●	Do not introduce new message types unless explicitly approved.
+C) Goal secrecy & reveal timing
+●	The goalOrder must be stored only in KV (server-side).
+●	Never send goalOrder to clients during gameplay.
+●	Send goalOrder only in GAME_OVER.
+D) Initial order constraints
+●	All players must start with the same initialOrder.
+●	initialOrder must have 0 positions correct vs goalOrder.
+●	initialOrder is sent only in GAME_START.
+E) Server authority & function routing
+●	All game logic runs in Before Publish bound to game.*.
+●	Clients do not compute correctness; they only submit orders.
+●	Client publishes:
+○	START_GAME to game.[gameId]
+○	MOVE_SUBMIT to game.[gameId]
+●	Function publishes:
+○	PROGRESS_UPDATE to game.[gameId]
+○	GAME_START / optional COUNTDOWN / GAME_OVER to admin.[gameId]
+F) State machine invariants
+●	Game phases are exactly: CREATED, LIVE, LOCKED.
+●	START_GAME:
+○	Any player may trigger it
+○	Only works if phase == CREATED
+○	If already started, ignore silently
+●	MOVE_SUBMIT:
+○	Only processed if phase == LIVE
+○	If phase == LOCKED, ignore silently
+○	If invalid payload/order, ignore silently
+G) Winner resolution (no ties)
+●	Determine winner using PubNub 17-digit timetoken ordering.
+●	Lock the game immediately after first win is recorded.
+●	After lock, ignore all subsequent moves (no REJECTED message).
+H) KV store discipline
+●	KV is the only state source. No in-memory reliance for correctness.
+●	Use deterministic KV keys:
+○	swapit:game:{gameId}
+○	swapit:game:{gameId}:player:{playerId}
+●	Store per-player:
+○	currentOrder, moveCount, positionsCorrect, correctnessHistory, finished, finishTT
+●	Store per-game:
+○	phase, tiles, goalOrder, initialOrder, players[], winnerPlayerId, startTT, winTT
+I) Client UI behavior locks
+●	Client subscribes directly to:
+○	game.[gameId]
+○	admin.[gameId]
+●	Start Game button visible to all pre-start; clicking publishes START_GAME.
+●	Selection UX:
+○	Click same emoji twice = unselect
+○	Second distinct click submits a move (full order)
+●	Animate swaps.
+●	Show correctness history (append per PROGRESS_UPDATE).
+●	On GAME_OVER:
+○	Lock UI input immediately
+○	Winner message: “WINNER! WINNER! CHICKEN DINNER!”
+○	Loser message: “YOU LOSE! BE FASTER NEXT TIME!”
+○	Overlay goalOrder onto each player’s current order
+J) Output expectations (don’t omit)
+●	Provide runnable React app + instructions.
+●	Provide Before Publish function code (deployable via MCP flow).
+●	Provide KV initialization strategy.
+●	Provide MCP steps to create/configure PubNub resources.
+●	No credentials requested or embedded.
+K) Self-check before final response
+Before presenting the final implementation, Claude must:
+●	List the two channels and confirm no others exist.
+●	Show one example JSON for each message type and confirm exact fields.
+●	Confirm goalOrder is not emitted before GAME_OVER.
+●	Confirm invalid and post-LOCK moves are ignored silently.
+●	Confirm tile IDs are 0–3 everywhere.
+

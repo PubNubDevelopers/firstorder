@@ -1,0 +1,20 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "before-publish-function.js",
+  "scripts": {
+    "start": "node local-server.js",
+    "dev": "node local-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Craig Conover <craig@pubnub.com>",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "node-persist": "^4.0.4",
+    "pubnub": "^10.2.5"
+  }
+}
