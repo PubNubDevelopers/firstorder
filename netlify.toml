@@ -1,10 +1,12 @@
 [build]
+  # Base directory for the build
+  base = "client"
   # Build command for Vite client
-  command = "cd client && npm install && npm run build"
+  command = "npm install && npm run build"
   # Directory to publish (Vite's dist folder)
-  publish = "client/dist"
-  # Functions directory for serverless functions
-  functions = "netlify/functions"
+  publish = "dist"
+  # Functions directory for serverless functions (relative to repo root)
+  functions = "../netlify/functions"
 
 [dev]
   # Local dev server command
