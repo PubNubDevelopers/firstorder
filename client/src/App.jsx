@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Registration from './components/Registration';
 import Lobby from './components/Lobby';
 import Game from './components/Game';
@@ -11,12 +11,12 @@ export default function App() {
   const [playerInfo, setPlayerInfo] = useState(null);
   const [gameConfig, setGameConfig] = useState(null);
 
-  // PubNub configuration
-  const pubnubConfig = {
+  // PubNub configuration - memoized to prevent infinite loops
+  const pubnubConfig = useMemo(() => ({
     publishKey: import.meta.env.VITE_PUBNUB_PUBLISH_KEY || 'YOUR_PUBLISH_KEY',
     subscribeKey: import.meta.env.VITE_PUBNUB_SUBSCRIBE_KEY || 'YOUR_SUBSCRIBE_KEY',
     userId: playerInfo?.playerId || 'default'
-  };
+  }), [playerInfo?.playerId]);
 
   const handleRegister = (info) => {
     setPlayerInfo(info);
