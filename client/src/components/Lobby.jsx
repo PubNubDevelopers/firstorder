@@ -293,10 +293,9 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave })
       }
     );
 
-    console.log('Subscription complete, fetching initial data...');
-    // Fetch initial data
+    console.log('Subscription complete, fetching initial presence...');
+    // Fetch initial presence data
     fetchLobbyPresence();
-    fetchGameList();
 
     return () => {
       unsubscribeLobby();
@@ -313,9 +312,12 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave })
     handleGameNameUpdated,
     fetchLobbyPresence,
     playerInfo.playerName
-    // Note: fetchGameList intentionally excluded to prevent infinite loop
-    // It's called once on mount and doesn't need to re-run
   ]);
+
+  // Fetch game list separately - only once when component mounts
+  useEffect(() => {
+    fetchGameList();
+  }, []); // Empty deps = only runs once on mount
 
   const handleCreateGameWithOptions = async (options) => {
     setLoading(true);
