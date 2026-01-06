@@ -1,4 +1,247 @@
-# CLAUDE.md (Project Rules)
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
+# First Order - Multiplayer Tile Game
+
+Real-time multiplayer puzzle game built with React, Vite, PubNub, and Netlify Functions.
+
+## Quick Start Commands
+
+### Development
+```bash
+# Client development (hot reload on port 5173)
+cd client && npm run dev
+
+# Local dev with Netlify Functions (port 8888)
+npm run dev  # or: netlify dev
+
+# Build for production
+cd client && npm run build
+```
+
+### Deployment
+```bash
+# Deploy to Netlify production
+cd client && npm run build
+netlify deploy --prod
+
+# Deploy functions only
+netlify deploy --prod --functions=netlify/functions
+```
+
+### Environment Setup
+Client requires these environment variables (set in Netlify dashboard):
+- `VITE_PUBNUB_PUBLISH_KEY`
+- `VITE_PUBNUB_SUBSCRIBE_KEY`
+- `VITE_PUBNUB_FUNCTION_URL`
+
+Backend functions require:
+- `PUBNUB_PUBLISH_KEY`
+- `PUBNUB_SUBSCRIBE_KEY`
+
+---
+
+## Architecture Overview
+
+### Three-Tier Real-Time Architecture
+
+**Client (React + Vite):**
+- Queries App Context directly for game listings (client-side)
+- Subscribes to PubNub channels for real-time updates
+- Publishes game moves to `game.{gameId}` channels
+
+**Netlify Functions (Node.js Serverless):**
+- Handles game mutations (create, join, start, leave, update name)
+- Never queries App Context (causes timeouts in serverless)
+- All operations via POST to `/.netlify/functions/game?operation=<op>`
+
+**PubNub Functions (Before Publish):**
+- Bound to `game.*` channels
+- Server-side move validation and win detection
+- Updates game state in App Context
+- Publishes progress/game-over messages
+
+### Data Storage: PubNub App Context
+
+Game state stored as channel metadata at `game.{gameId}`:
+- **Basic `status` field**: `CREATED`, `LOCKED`, `OVER` (indexed, filterable)
+- **Custom fields**: `gameState` (JSON), `playerCount`, `createdAt`
+
+**Critical**: Use basic `status` field (not custom) for server-side filtering:
+```javascript
+// ✅ CORRECT
+pubnub.objects.getAllChannelMetadata({
+  filter: "status == 'CREATED'"  // Server-side filtering
+})
+
+// ❌ WRONG - fetches ALL channels
+pubnub.objects.getAllChannelMetadata()
+```
+
+### Channel Architecture
+
+- `lobby` - Game lobby presence and real-time game list updates
+- `game.{gameId}` - Game moves (MOVE_SUBMIT, PROGRESS_UPDATE)
+- `admin.{gameId}` - Admin messages (GAME_STARTED, GAME_OVER, PLAYER_JOINED, etc.)
+
+**Naming convention**: Use dots, not slashes: `game.ABC123` not `game/ABC123`
+
+### Game State Lifecycle
+
+```
+CREATED → LOCKED → OVER
+```
+
+- **CREATED**: Game in lobby, accepting players
+- **LOCKED**: Game started, moves being processed (no new players)
+- **OVER**: Game finished, winner declared
+
+---
+
+## Critical Implementation Patterns
+
+### 1. Prevent Infinite Loops with useMemo
+
+**Problem**: Creating config objects in render causes PubNub to reinitialize on every render.
+
+**Solution**: Memoize all PubNub config objects:
+```javascript
+// ✅ CORRECT - App.jsx
+const pubnubConfig = useMemo(() => ({
+  publishKey: import.meta.env.VITE_PUBNUB_PUBLISH_KEY,
+  subscribeKey: import.meta.env.VITE_PUBNUB_SUBSCRIBE_KEY,
+  userId: playerInfo?.playerId || 'default'
+}), [playerInfo?.playerId]);
+
+// ❌ WRONG - creates new object every render
+const pubnubConfig = {
+  publishKey: import.meta.env.VITE_PUBNUB_PUBLISH_KEY,
+  // ...
+};
+```
+
+### 2. useEffect Dependencies for Real-Time Updates
+
+**Pattern**: Query once on mount, update via subscriptions:
+```javascript
+// Lobby.jsx pattern
+const fetchGameList = useCallback(async () => {
+  const result = await listGames(pubnub);
+  setAvailableGames(result.games);
+}, [pubnub]);
+
+useEffect(() => {
+  // Subscribe to real-time events
+  subscribe('lobby', handleMessage);
+
+  // Initial query (only runs once)
+  fetchGameList();
+
+  return () => unsubscribe('lobby');
+}, [
+  subscribe,
+  // NOTE: fetchGameList intentionally excluded to prevent infinite loop
+]);
+```
+
+### 3. Client vs Backend Responsibilities
+
+**Client** (direct PubNub queries):
+- List games with `listGames(pubnub)` in `gameApi.js`
+- Real-time subscriptions via `usePubNub` hook
+- Publishing game moves
+
+**Backend** (Netlify Functions):
+- Create/join/start/leave game
+- All game state mutations
+- Never queries App Context (causes timeouts)
+
+### 4. Vite Environment Variables
+
+Only variables prefixed with `VITE_` are included in the client build:
+- Client: `VITE_PUBNUB_PUBLISH_KEY`, `VITE_PUBNUB_SUBSCRIBE_KEY`
+- Backend: `PUBNUB_PUBLISH_KEY`, `PUBNUB_SUBSCRIBE_KEY` (no VITE_ prefix)
+
+---
+
+## Key File Locations
+
+### Critical Files (Reference by Line Number)
+
+- `client/src/App.jsx:15-19` - pubnubConfig memoization
+- `client/src/utils/gameApi.js:149-221` - listGames with server-side filter
+- `client/src/components/Lobby.jsx:304-318` - useEffect dependencies (infinite loop prevention)
+- `client/src/hooks/usePubNub.js` - PubNub connection management
+- `netlify/functions/game.js` - Game management API
+- `server/before-publish-function.js` - Move validation logic
+
+### Component Hierarchy
+
+```
+App.jsx (root)
+├── Registration.jsx
+├── Lobby.jsx
+│   ├── CreateGameModal.jsx
+│   └── ConfirmDialog.jsx
+└── Game.jsx
+    ├── PlayerBoard.jsx
+    │   └── Tile.jsx
+    ├── GameOverModal.jsx
+    └── HelpModal.jsx
+```
+
+---
+
+## Common Issues and Solutions
+
+### Infinite Loop: getAllChannelMetadata
+
+**Symptom**: Continuous PubNub API calls in browser console
+
+**Cause**: Config object recreated on every render (see Critical Pattern #1)
+
+**Fix**: Memoize with `useMemo` in App.jsx
+
+### Netlify Function Timeout
+
+**Symptom**: 30+ second timeouts when calling App Context from functions
+
+**Cause**: PubNub Node.js SDK has cold start issues in serverless
+
+**Fix**: Query App Context from client, not from Netlify Functions
+
+### Missing Server-Side Filter
+
+**Symptom**: All games fetched, then filtered client-side
+
+**Cause**: Missing `filter: "status == 'CREATED'"` parameter
+
+**Fix**: Add filter to `getAllChannelMetadata()` call in `gameApi.js:168`
+
+---
+
+## Testing Before Deploy
+
+**CRITICAL**: Always test in browser before deploying:
+
+```bash
+cd client
+npm run build
+netlify deploy --prod
+
+# Then test:
+# 1. Enter lobby (check: ONE getAllChannelMetadata call)
+# 2. Open create game modal (check: NO new calls)
+# 3. Leave lobby (check: calls STOP)
+# 4. Check browser console for errors
+```
+
+---
+
+# Project Rules
 
 ## ALWAYS
 - ALWAYS start by restating the goal, current state, and the smallest next deliverable.
@@ -75,6 +318,7 @@
 - If MCPs are available, ALWAYS use them for accuracy on framework/library behavior.
 - When unsure about a library API, ALWAYS prefer authoritative docs over guessing.
 - If you don’t have access to docs/tools, say so and propose a verification step.
+- The PubNub MCP is of utmost importance to this project. Leverage it for all PubNub integrations.
 
 ## SESSION MANAGEMENT
 - ALWAYS keep context clean:
