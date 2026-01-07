@@ -11,10 +11,12 @@
 [dev]
   # Local dev server command
   command = "cd client && npm run dev"
-  # Port for local dev server
+  # Port that Vite will run on
   targetPort = 5173
-  # Netlify Dev port
+  # Netlify Dev proxy port
   port = 8888
+  # Functions directory (relative to repo root)
+  functions = "netlify/functions"
   # Auto open browser
   autoLaunch = false
 
