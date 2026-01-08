@@ -10,12 +10,12 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #070f39 0%, #0a1456 100%);
   min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #333;
+  color: #171717;
 }
 
 #root {
@@ -59,14 +59,14 @@ input {
 }
 
 input:focus {
-  border-color: #00d4ff;
+  border-color: #528dfa;
 }
 
 .app {
-  background: white;
+  background: #f9f9f9;
   border-radius: 20px;
   padding: 40px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .lobby {
@@ -87,14 +87,14 @@ input:focus {
 .lobby h1 {
   font-size: 48px;
   margin-bottom: 20px;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #a01420 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .help-button {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: #c71929;
   color: white;
   padding: 10px 20px;
   border-radius: 8px;
@@ -111,7 +111,7 @@ input:focus {
 }
 
 .leave-lobby-button {
-  background: #ff0080;
+  background: #c71929;
   color: white;
   font-size: 14px;
   padding: 10px 20px;
@@ -124,7 +124,7 @@ input:focus {
 }
 
 .leave-lobby-button:hover:not(:disabled) {
-  background: #cc0066;
+  background: #a01420;
   transform: translateY(-2px);
 }
 
@@ -146,7 +146,7 @@ input:focus {
 }
 
 .lobby-form button {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
 }
 
@@ -198,12 +198,12 @@ input:focus {
 }
 
 .player-board.is-current-player {
-  border-color: #00d4ff;
+  border-color: #528dfa;
   box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
 }
 
 .player-board.is-winner {
-  border-color: #00ff88;
+  border-color: #528dfa;
   box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
 }
 
@@ -274,7 +274,7 @@ input:focus {
 
 .tile {
   aspect-ratio: 1;
-  background: white;
+  background: #f9f9f9;
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -307,7 +307,7 @@ input:focus {
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 64px;
-  color: #00ff88;
+  color: #528dfa;
   font-weight: bold;
   text-shadow: 0 0 20px rgba(0, 255, 136, 0.6),
                0 4px 8px rgba(0, 0, 0, 0.3);
@@ -336,13 +336,13 @@ input:focus {
 }
 
 .tile.selected {
-  border-color: #00d4ff;
+  border-color: #528dfa;
   background: #e6fbff;
   transform: scale(1.1);
 }
 
 .tile.correct {
-  border-color: #00ff88;
+  border-color: #528dfa;
   background: #e6fff5;
 }
 
@@ -392,23 +392,23 @@ input:focus {
 }
 
 .correctness-dot[data-value="4"] {
-  background: #00ff88;
+  background: #528dfa;
 }
 
 .correctness-dot[data-value="3"] {
-  background: #00d4ff;
+  background: #528dfa;
 }
 
 .correctness-dot[data-value="2"] {
-  background: #c724ff;
+  background: #c71929;
 }
 
 .correctness-dot[data-value="1"] {
-  background: #ff0080;
+  background: #c71929;
 }
 
 .correctness-dot[data-value="0"] {
-  background: #ff4444;
+  background: #c71929;
 }
 
 .game-over-modal {
@@ -435,7 +435,7 @@ input:focus {
 }
 
 .game-over-content {
-  background: white;
+  background: #f9f9f9;
   border-radius: 20px;
   padding: 40px;
   text-align: center;
@@ -463,11 +463,11 @@ input:focus {
 }
 
 .winner-message {
-  color: #00ff88;
+  color: #528dfa;
 }
 
 .loser-message {
-  color: #ff0080;
+  color: #c71929;
 }
 
 .goal-order-display {
@@ -494,13 +494,13 @@ input:focus {
 }
 
 .won-badge {
-  background: linear-gradient(135deg, #00ff88 0%, #00d4aa 100%);
+  background: linear-gradient(135deg, #528dfa 0%, #3a6fd8 100%);
   color: #000;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .lost-badge {
-  background: linear-gradient(135deg, #ff0080 0%, #cc0066 100%);
+  background: linear-gradient(135deg, #c71929 0%, #a01420 100%);
   color: white;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -517,9 +517,9 @@ input:focus {
 .goal-tile {
   font-size: 36px;
   padding: 8px;
-  background: white;
+  background: #f9f9f9;
   border-radius: 8px;
-  border: 2px solid #00ff88;
+  border: 2px solid #528dfa;
   min-width: 50px;
   display: flex;
   align-items: center;
@@ -529,7 +529,7 @@ input:focus {
 .move-count-display {
   margin: 20px 0;
   padding: 15px 20px;
-  background: linear-gradient(135deg, #00ff88 0%, #00d4aa 100%);
+  background: linear-gradient(135deg, #528dfa 0%, #3a6fd8 100%);
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
 }
@@ -543,6 +543,30 @@ input:focus {
 .move-count-display strong {
   font-size: 24px;
   font-weight: 700;
+}
+
+.winner-name-display {
+  margin: 20px 0;
+  padding: 30px 40px;
+  background: linear-gradient(135deg, #528dfa 0%, #3a6fd8 100%);
+  border-radius: 15px;
+  box-shadow: 0 4px 16px rgba(82, 141, 250, 0.4);
+}
+
+.winner-name-display p {
+  margin: 0;
+  font-size: 32px;
+  color: #f9f9f9;
+  font-weight: 600;
+}
+
+.winner-name-display strong {
+  font-size: 48px;
+  font-weight: 800;
+  color: #ffffff;
+  display: block;
+  margin-top: 10px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .modal-buttons {
@@ -564,7 +588,7 @@ input:focus {
 
 .close-button {
   background: #e0e0e0;
-  color: #333;
+  color: #171717;
 }
 
 .close-button:hover {
@@ -572,7 +596,7 @@ input:focus {
 }
 
 .lobby-button {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
 }
 
@@ -582,7 +606,7 @@ input:focus {
 }
 
 .start-game-button {
-  background: linear-gradient(135deg, #00ff88 0%, #00d4aa 100%);
+  background: linear-gradient(135deg, #528dfa 0%, #3a6fd8 100%);
   color: #000;
   font-size: 20px;
   padding: 16px 32px;
@@ -615,7 +639,7 @@ input:focus {
 .waiting-players h3 {
   font-size: 20px;
   margin-bottom: 15px;
-  color: #333;
+  color: #171717;
   text-align: center;
 }
 
@@ -629,7 +653,7 @@ input:focus {
   display: flex;
   align-items: center;
   padding: 12px;
-  background: white;
+  background: #f9f9f9;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
@@ -642,12 +666,12 @@ input:focus {
 .waiting-player-item .player-name {
   flex: 1;
   font-weight: 500;
-  color: #333;
+  color: #171717;
 }
 
 .waiting-player-item .host-badge {
   background: #ffd700;
-  color: #333;
+  color: #171717;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -657,10 +681,10 @@ input:focus {
 
 .error-message {
   background: #fff0f6;
-  border: 2px solid #ff0080;
+  border: 2px solid #c71929;
   border-radius: 8px;
   padding: 16px;
-  color: #cc0066;
+  color: #a01420;
   margin-bottom: 20px;
 }
 
@@ -674,20 +698,20 @@ input:focus {
 .other-players-section h3 {
   font-size: 24px;
   margin-bottom: 15px;
-  color: #333;
+  color: #171717;
 }
 
 .other-players-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: #f9f9f9;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .other-players-table thead {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
 }
 
@@ -704,6 +728,11 @@ input:focus {
   padding: 12px 16px;
   border-bottom: 1px solid #e0e0e0;
   font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.other-players-table tbody tr {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .other-players-table tbody tr:last-child td {
@@ -724,7 +753,7 @@ input:focus {
 }
 
 .you-badge {
-  color: #c724ff;
+  color: #c71929;
   font-weight: 700;
   font-size: 12px;
 }
@@ -732,17 +761,53 @@ input:focus {
 .winner-badge {
   display: inline-block;
   padding: 4px 12px;
-  background: #00ff88;
+  background: #528dfa;
   color: #000;
   border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
 }
 
+/* Player Progress Bar */
+.progress-cell {
+  width: 200px;
+}
+
+.player-progress-bar {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  width: 100%;
+  height: 20px;
+  margin-bottom: 4px;
+}
+
+.progress-segment {
+  height: 100%;
+  flex: 1;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.progress-segment.filled {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.progress-segment.empty {
+  background-color: #e0e0e0 !important;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+}
+
 .playing-badge {
   display: inline-block;
   padding: 4px 12px;
-  background: #00d4ff;
+  background: #528dfa;
   color: #000;
   border-radius: 12px;
   font-size: 14px;
@@ -802,7 +867,7 @@ input:focus {
 .countdown-go {
   font-size: 120px;
   font-weight: bold;
-  color: #00ff88;
+  color: #528dfa;
   text-shadow: 0 0 30px rgba(0, 255, 136, 0.7);
   animation: goPulse 0.5s ease-out;
 }
@@ -850,7 +915,7 @@ input:focus {
   max-width: 500px;
   margin: 50px auto;
   padding: 30px;
-  background: white;
+  background: #f9f9f9;
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
@@ -890,12 +955,12 @@ input:focus {
 
 .registration-form input:focus {
   outline: none;
-  border-color: #00d4ff;
+  border-color: #528dfa;
 }
 
 .registration-form button {
   padding: 12px;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -928,7 +993,7 @@ input:focus {
 .lobby-section h2 {
   font-size: 24px;
   margin-bottom: 20px;
-  color: #333;
+  color: #171717;
 }
 
 .section-header {
@@ -943,7 +1008,7 @@ input:focus {
 }
 
 .create-game-button {
-  background: linear-gradient(135deg, #00ff88 0%, #00d4aa 100%);
+  background: linear-gradient(135deg, #528dfa 0%, #3a6fd8 100%);
   color: #000;
   font-size: 14px;
   padding: 10px 20px;
@@ -959,7 +1024,7 @@ input:focus {
 }
 
 .player-item {
-  background: white;
+  background: #f9f9f9;
   border-radius: 8px;
   padding: 12px;
   font-size: 14px;
@@ -968,7 +1033,7 @@ input:focus {
 }
 
 .player-item.current-player {
-  border-color: #c724ff;
+  border-color: #c71929;
   background: #faf0ff;
   font-weight: 600;
 }
@@ -988,7 +1053,7 @@ input:focus {
 }
 
 .game-card {
-  background: white;
+  background: #f9f9f9;
   border-radius: 12px;
   padding: 20px;
   border: 2px solid #e0e0e0;
@@ -996,7 +1061,7 @@ input:focus {
 }
 
 .game-card:hover {
-  border-color: #c724ff;
+  border-color: #c71929;
   box-shadow: 0 4px 12px rgba(199, 36, 255, 0.2);
 }
 
@@ -1012,11 +1077,11 @@ input:focus {
 .game-card-header h3 {
   font-size: 18px;
   margin: 0;
-  color: #333;
+  color: #171717;
 }
 
 .player-count {
-  background: #00d4ff;
+  background: #528dfa;
   color: #000;
   padding: 4px 12px;
   border-radius: 12px;
@@ -1046,7 +1111,7 @@ input:focus {
 .host-badge {
   font-size: 11px;
   background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
-  color: #333;
+  color: #171717;
   padding: 2px 8px;
   border-radius: 10px;
   font-weight: 700;
@@ -1057,7 +1122,7 @@ input:focus {
 
 .join-button {
   width: 100%;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
   padding: 10px;
   font-size: 14px;
@@ -1081,12 +1146,12 @@ input:focus {
 
 .join-by-id button {
   width: 100%;
-  background: linear-gradient(135deg, #ff0080 0%, #c724ff 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
 }
 
 .leave-game-button {
-  background: #ff0080;
+  background: #c71929;
   color: white;
   font-size: 14px;
   padding: 10px 20px;
@@ -1094,7 +1159,7 @@ input:focus {
 }
 
 .leave-game-button:hover {
-  background: #cc0066;
+  background: #a01420;
 }
 
 /* ===== Confirm Dialog Styles ===== */
@@ -1113,7 +1178,7 @@ input:focus {
 }
 
 .confirm-dialog-content {
-  background: white;
+  background: #f9f9f9;
   border-radius: 16px;
   padding: 32px;
   max-width: 400px;
@@ -1125,7 +1190,7 @@ input:focus {
 .confirm-dialog-title {
   margin: 0 0 16px 0;
   font-size: 24px;
-  color: #333;
+  color: #171717;
   text-align: center;
 }
 
@@ -1156,7 +1221,7 @@ input:focus {
 
 .confirm-dialog-buttons .cancel-button {
   background: #e0e0e0;
-  color: #333;
+  color: #171717;
 }
 
 .confirm-dialog-buttons .cancel-button:hover {
@@ -1165,7 +1230,7 @@ input:focus {
 }
 
 .confirm-dialog-buttons .confirm-button {
-  background: linear-gradient(135deg, #ff0080 0%, #cc0066 100%);
+  background: linear-gradient(135deg, #c71929 0%, #a01420 100%);
   color: white;
 }
 
@@ -1190,7 +1255,7 @@ input:focus {
 }
 
 .modal-content {
-  background: white;
+  background: #f9f9f9;
   border-radius: 16px;
   padding: 32px;
   max-width: 500px;
@@ -1202,7 +1267,7 @@ input:focus {
 
 .create-game-modal h2 {
   margin-bottom: 24px;
-  color: #c724ff;
+  color: #c71929;
 }
 
 .form-group {
@@ -1213,7 +1278,7 @@ input:focus {
   display: block;
   font-weight: 600;
   margin-bottom: 8px;
-  color: #333;
+  color: #171717;
   text-align: left;
 }
 
@@ -1248,6 +1313,37 @@ input:focus {
   margin-top: 6px;
 }
 
+.refresh-button {
+  height: 40px;
+  width: 40px;
+  padding: 0;
+  font-size: 20px;
+  background: #528dfa;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background: #3a6fd8;
+  transform: scale(1.05);
+}
+
+.refresh-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.refresh-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -1273,19 +1369,19 @@ input:focus {
   cursor: pointer;
   border: 2px solid #ddd;
   border-radius: 6px;
-  background: white;
+  background: #f9f9f9;
   position: relative;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .checkbox-label input[type="checkbox"]:hover {
-  border-color: #c724ff;
+  border-color: #c71929;
 }
 
 .checkbox-label input[type="checkbox"]:checked {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
-  border-color: #c724ff;
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
+  border-color: #c71929;
 }
 
 .checkbox-label input[type="checkbox"]:checked::after {
@@ -1323,7 +1419,7 @@ input:focus {
   cursor: pointer;
   border: 2px solid #ccc;
   border-radius: 50%;
-  background: white;
+  background: #f9f9f9;
   position: relative;
   transition: all 0.15s ease;
   flex-shrink: 0;
@@ -1332,12 +1428,12 @@ input:focus {
 }
 
 .radio-label input[type="radio"]:hover {
-  border-color: #c724ff;
+  border-color: #c71929;
 }
 
 .radio-label input[type="radio"]:checked {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
-  border-color: #c724ff;
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
+  border-color: #c71929;
 }
 
 .radio-label input[type="radio"]:checked::after {
@@ -1348,7 +1444,7 @@ input:focus {
   transform: translate(-50%, -50%);
   width: 8px;
   height: 8px;
-  background: white;
+  background: #f9f9f9;
   border-radius: 50%;
 }
 
@@ -1369,7 +1465,7 @@ input:focus {
   flex: 1;
   padding: 12px;
   border: 2px solid #ddd;
-  background: white;
+  background: #f9f9f9;
   border-radius: 8px;
   font-weight: 600;
   transition: all 0.2s;
@@ -1377,8 +1473,8 @@ input:focus {
 }
 
 .tile-count-option.selected {
-  border-color: #c724ff;
-  background: #c724ff;
+  border-color: #c71929;
+  background: #c71929;
   color: white;
 }
 
@@ -1409,7 +1505,7 @@ input:focus {
 
 .modal-actions button:first-child {
   background: #e0e0e0;
-  color: #333;
+  color: #171717;
 }
 
 .modal-actions button:first-child:hover {
@@ -1417,7 +1513,7 @@ input:focus {
 }
 
 .modal-actions button.primary {
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
 }
 
@@ -1439,7 +1535,7 @@ input:focus {
 
 /* ===== Accordion Game Card Styles ===== */
 .game-card {
-  background: white;
+  background: #f9f9f9;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1453,7 +1549,7 @@ input:focus {
 
 .game-card-header {
   padding: 16px;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
   display: flex;
   justify-content: space-between;
@@ -1516,7 +1612,7 @@ input:focus {
   display: flex;
   align-items: center;
   padding: 10px;
-  background: white;
+  background: #f9f9f9;
   border-radius: 8px;
   margin-bottom: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -1541,7 +1637,7 @@ input:focus {
 
 .host-badge {
   background: #ffd700;
-  color: #333;
+  color: #171717;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -1558,7 +1654,7 @@ input:focus {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
 }
 
@@ -1581,7 +1677,7 @@ input:focus {
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
-  background: linear-gradient(135deg, #c724ff 0%, #ff0080 100%);
+  background: linear-gradient(135deg, #c71929 0%, #c71929 100%);
   color: white;
   margin-right: 12px;
   white-space: nowrap;
@@ -1640,7 +1736,7 @@ input:focus {
 .edit-name-container input {
   flex: 1;
   padding: 8px;
-  border: 2px solid #c724ff;
+  border: 2px solid #c71929;
   border-radius: 4px;
 }
 
@@ -1701,7 +1797,7 @@ input:focus {
   width: 60px;
   height: 60px;
   border: 6px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #c724ff;
+  border-top-color: #c71929;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1723,7 +1819,7 @@ input:focus {
 .help-modal h2 {
   text-align: center;
   margin-bottom: 30px;
-  color: #333;
+  color: #171717;
 }
 
 .help-section {
@@ -1737,7 +1833,7 @@ input:focus {
 }
 
 .help-section h3 {
-  color: #c724ff;
+  color: #c71929;
   margin-bottom: 10px;
   font-size: 20px;
 }
@@ -1760,7 +1856,7 @@ input:focus {
 }
 
 .help-section strong {
-  color: #333;
+  color: #171717;
 }
 
 /* ===== PubNub Credits ===== */
@@ -1776,13 +1872,13 @@ input:focus {
 }
 
 .pubnub-credits a {
-  color: #c724ff;
+  color: #c71929;
   text-decoration: none;
   font-weight: 600;
   transition: color 0.2s ease;
 }
 
 .pubnub-credits a:hover {
-  color: #ff0080;
+  color: #c71929;
   text-decoration: underline;
 }

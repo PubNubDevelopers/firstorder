@@ -461,7 +461,7 @@ async function startGame(pubnub, body) {
     game.tiles = tiles;
     game.goalOrder = goalOrder;
     game.initialOrder = initialOrder;
-    game.phase = 'LOCKED';
+    game.phase = 'LIVE';
     game.startTT = Date.now();
 
     // Initialize all players with initial order
@@ -620,14 +620,6 @@ async function leaveGame(pubnub, body) {
       };
     }
 
-    // Can only leave during CREATED phase
-    if (game.phase !== 'CREATED') {
-      return {
-        statusCode: 403,
-        body: { error: 'Cannot leave game after it has started' }
-      };
-    }
-
     // Check if player is in game
     if (!game.playerIds.includes(playerId)) {
       return {
@@ -638,6 +630,83 @@ async function leaveGame(pubnub, body) {
 
     // Check if leaving player is the host (first player)
     const isHost = game.playerIds[0] === playerId;
+
+    // Handle LIVE/OVER phase separately
+    if (game.phase === 'LIVE' || game.phase === 'OVER') {
+      // If host is leaving during live game, end the game for everyone
+      if (isHost) {
+        // Update game phase to OVER
+        game.phase = 'OVER';
+        game.endTT = Date.now().toString();
+        game.hostLeftTT = game.endTT;
+
+        await storage.setGame(pubnub, gameId, game);
+
+        // Notify all players that host ended the game
+        await pubnub.publish({
+          channel: `admin.${gameId}`,
+          message: {
+            v: 1,
+            type: 'HOST_LEFT',
+            gameId,
+            message: 'The host has left and ended the game.'
+          }
+        });
+
+        return {
+          statusCode: 200,
+          body: {
+            success: true,
+            message: 'Game ended (host left)'
+          }
+        };
+      } else {
+        // Non-host player leaving during live game
+        // Remove player from game
+        delete game.players[playerId];
+        game.playerIds = game.playerIds.filter(pid => pid !== playerId);
+
+        if (game.playerNames && game.playerNames[playerId]) {
+          delete game.playerNames[playerId];
+        }
+
+        if (game.playerLocations && game.playerLocations[playerId]) {
+          delete game.playerLocations[playerId];
+        }
+
+        await storage.setGame(pubnub, gameId, game);
+
+        // Notify all remaining players
+        await pubnub.publish({
+          channel: `admin.${gameId}`,
+          message: {
+            v: 1,
+            type: 'PLAYER_LEFT',
+            gameId,
+            playerId,
+            playerName: game.playerNames?.[playerId] || `Player ${playerId.slice(-4)}`,
+            playerIds: game.playerIds,
+            playerNames: game.playerNames
+          }
+        });
+
+        return {
+          statusCode: 200,
+          body: {
+            success: true,
+            message: 'Player left game'
+          }
+        };
+      }
+    }
+
+    // Handle CREATED phase (existing logic)
+    if (game.phase !== 'CREATED') {
+      return {
+        statusCode: 403,
+        body: { error: 'Cannot leave game in this phase' }
+      };
+    }
 
     // If host is leaving and there are other players, cancel the game
     if (isHost && game.playerIds.length > 1) {

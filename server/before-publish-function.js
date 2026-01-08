@@ -163,12 +163,14 @@ function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, req
   // Set winner if not already set
   if (!gameState.winnerPlayerId) {
     gameState.winnerPlayerId = playerId;
+    gameState.winnerName = gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`;
     gameState.winTT = moveTT;
   }
 
   // Mark game as over (keep for analytics)
   gameState.phase = 'OVER';
-  gameState.lockedTT = Date.now().toString();
+  gameState.endTT = Date.now().toString();
+  gameState.lockedTT = gameState.endTT; // Keep for backward compatibility
 
   // Save game state to App Context
   return pubnub.objects.setChannelMetadata({
@@ -206,8 +208,10 @@ function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, req
           gameId: gameId,
           phase: 'OVER',
           winnerPlayerId: gameState.winnerPlayerId,
+          winnerName: gameState.winnerName,
           goalOrder: gameState.goalOrder,
-          winTT: gameState.winTT
+          winTT: gameState.winTT,
+          endTT: gameState.endTT
         }
       });
     }).then(() => {

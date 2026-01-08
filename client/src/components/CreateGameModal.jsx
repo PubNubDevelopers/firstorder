@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { getThemeKeys, EMOJI_THEMES } from '../utils/emojiThemes';
+import { getRandomMovieName } from '../utils/movieNames';
 
 /**
  * CreateGameModal component - modal for creating new games with options
  */
 export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) {
+  // Generate random movie name once when component mounts
+  const defaultMovieName = useMemo(() => getRandomMovieName(), []);
+
   const [tileCount, setTileCount] = useState(5);
   const [emojiTheme, setEmojiTheme] = useState('food');
   const [playerMode, setPlayerMode] = useState('multiplayer'); // 'single' or 'multiplayer'
   const [maxPlayers, setMaxPlayers] = useState(2);
-  const [gameName, setGameName] = useState('');
+  const [gameName, setGameName] = useState(defaultMovieName);
   const [gameplayMode, setGameplayMode] = useState('none'); // 'none', 'pinning', 'verified'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,6 +50,11 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
     }
   };
 
+  // Generate a new random movie name
+  const handleRefreshMovieName = () => {
+    setGameName(getRandomMovieName());
+  };
+
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal-content create-game-modal" onClick={(e) => e.stopPropagation()}>
@@ -62,15 +71,27 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
         <div className="form-group form-row" style={{ alignItems: 'flex-start' }}>
           <label style={{ paddingTop: '8px' }}>Game Name:</label>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <input
-              type="text"
-              placeholder="Leave blank to use Game ID"
-              value={gameName}
-              onChange={(e) => setGameName(e.target.value)}
-              maxLength={30}
-              disabled={loading}
-            />
-            <span className="hint">Custom name (optional)</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                placeholder="Enter game name"
+                value={gameName}
+                onChange={(e) => setGameName(e.target.value)}
+                maxLength={30}
+                disabled={loading}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={handleRefreshMovieName}
+                disabled={loading}
+                className="refresh-button"
+                title="Get a different movie name"
+              >
+                🎬
+              </button>
+            </div>
+            <span className="hint">Random movie name generated</span>
           </div>
         </div>
 

@@ -113,6 +113,7 @@ const LOSER_MESSAGES = [
  */
 export default function GameOverModal({
   isWinner,
+  winnerName,
   goalOrder,
   tiles,
   moveCount,
@@ -161,6 +162,12 @@ export default function GameOverModal({
         {isWinner && moveCount !== undefined && (
           <div className="move-count-display">
             <p>Completed in <strong>{moveCount}</strong> {moveCount === 1 ? 'move' : 'moves'}</p>
+          </div>
+        )}
+
+        {!isWinner && winnerName && (
+          <div className="winner-name-display">
+            <p><strong>{winnerName}</strong> won the game!</p>
           </div>
         )}
 

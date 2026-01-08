@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePubNub } from '../hooks/usePubNub';
 import { startGame as startGameApi, getGame, leaveGame as leaveGameApi, updateGameName } from '../utils/gameApi';
 import PlayerBoard from './PlayerBoard';
@@ -25,6 +25,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
   const [initialOrder, setInitialOrder] = useState(null);
   const [goalOrder, setGoalOrder] = useState(null);
   const [winnerPlayerId, setWinnerPlayerId] = useState(null);
+  const [winnerName, setWinnerName] = useState(null);
   const [countdownValue, setCountdownValue] = useState(null);
   const [gameState, setGameState] = useState(initialGameName ? { gameName: initialGameName } : null);
 
@@ -182,6 +183,10 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
           delete updated[message.playerId];
           return updated;
         });
+      } else if (message.type === 'HOST_LEFT') {
+        // Host left during LIVE game - show alert and return to lobby
+        alert(message.message || 'The host has left and ended the game.');
+        onLeave(); // Return to lobby
       } else if (message.type === 'GAME_CANCELED') {
         // Host canceled the game during WAITING phase
         alert(message.reason || 'The host has canceled the game.');
@@ -207,18 +212,19 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
         // If we're in countdown, show "Go!" first
         if (countdownValue !== null) {
           setCountdownValue('Go!');
-          // Delay transition to LOCKED by 800ms to show "Go!"
+          // Delay transition to LIVE by 800ms to show "Go!"
           setTimeout(() => {
-            setGamePhase('LOCKED');
+            setGamePhase('LIVE');
             setCountdownValue(null);
           }, 800);
         } else {
-          setGamePhase('LOCKED');
+          setGamePhase('LIVE');
           setCountdownValue(null);
         }
 
         setTiles(message.tiles);
         setInitialOrder(message.initialOrder);
+        setGoalOrder(message.goalOrder); // Set goal order for verified positions feature
 
         // Update gameState with feature flags
         setGameState(prev => ({
@@ -260,6 +266,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
         setGamePhase('OVER');
         setGoalOrder(message.goalOrder);
         setWinnerPlayerId(message.winnerPlayerId);
+        setWinnerName(message.winnerName);
         setShowGameOver(true);
 
         // Play winner or loser sound based on who won
@@ -335,14 +342,14 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
     setIsLeavingGame(true);
 
     try {
-      // Only need API call if game is in WAITING phase
-      if (gamePhase === 'WAITING') {
+      // Call API for WAITING or LIVE/OVER phases
+      if (gamePhase === 'WAITING' || gamePhase === 'LIVE' || gamePhase === 'OVER') {
         await leaveGameApi(gameId, playerId);
 
-        // If host is leaving, give a brief moment for GAME_CANCELED message to be sent to other players
-        // The GAME_CANCELED handler will call onLeave() for us (line 188)
-        // For non-host players, we can return to lobby immediately
-        if (isCreator) {
+        // If host is leaving WAITING phase, give a brief moment for GAME_CANCELED message to be sent
+        // If host is leaving LIVE phase, give a brief moment for HOST_LEFT message to be sent
+        // The message handlers will call onLeave() for us
+        if (isCreator && (gamePhase === 'WAITING' || gamePhase === 'LIVE')) {
           // Brief delay to allow message to propagate
           await new Promise(resolve => setTimeout(resolve, 500));
         }
@@ -365,9 +372,10 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
     try {
       const response = await startGameApi(gameId, playerId);
 
-      // For testing: capture goal order from response
-      if (response.goalOrder) {
-        setGoalOrder(response.goalOrder);
+      // Capture goal order from response for verified positions feature
+      const goalOrder = response.goalOrder;
+      if (goalOrder) {
+        setGoalOrder(goalOrder);
       }
 
       const adminChannel = `admin.${gameId}`;
@@ -411,9 +419,10 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
         v: 1,
         type: 'GAME_START',
         gameId: gameId,
-        phase: 'LOCKED',
+        phase: 'LIVE',
         tiles: tiles,
         initialOrder: initialOrder,
+        goalOrder: goalOrder, // Include goalOrder for verified positions feature
         tilePinningEnabled: gameState?.tilePinningEnabled || false,
         verifiedPositionsEnabled: gameState?.verifiedPositionsEnabled || false
       });
@@ -605,6 +614,16 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
   }
 
   const currentPlayerState = playerStates[playerId];
+
+  // Create stable color mapping for each player (based on when they joined, not their current rank)
+  // This is recalculated when players join/leave but that's infrequent
+  const playerColorMap = {};
+  const sortedPlayerIds = Object.keys(playerStates).sort();
+  sortedPlayerIds.forEach((pid, index) => {
+    const hue = (index * 137.5) % 360; // Golden angle for good color distribution
+    playerColorMap[pid] = `hsl(${hue}, 70%, 60%)`;
+  });
+
   const allPlayers = Object.values(playerStates)
     .filter(p => p && p.playerId)
     .sort((a, b) => (b.positionsCorrect || 0) - (a.positionsCorrect || 0)); // Sort by correctness descending
@@ -641,8 +660,8 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
       )}
 
       <div className="game-content">
-        {/* Current player board - only show when game is LOCKED or OVER */}
-        {(gamePhase === 'LOCKED' || gamePhase === 'OVER') && currentPlayerState && currentPlayerState.currentOrder && tiles && (
+        {/* Current player board - only show when game is LIVE or OVER */}
+        {(gamePhase === 'LIVE' || gamePhase === 'OVER') && currentPlayerState && currentPlayerState.currentOrder && tiles && (
           <PlayerBoard
             playerId={playerId}
             playerName={playerName}
@@ -661,40 +680,63 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
           />
         )}
 
-        {/* All players' progress table - only show when game is LOCKED or OVER */}
-        {(gamePhase === 'LOCKED' || gamePhase === 'OVER') && allPlayers.length > 0 && (
+        {/* All players' progress table - only show when game is LIVE or OVER */}
+        {(gamePhase === 'LIVE' || gamePhase === 'OVER') && allPlayers.length > 0 && (
           <div className="other-players-section">
             <h3>Players</h3>
             <table className="other-players-table">
               <thead>
                 <tr>
                   <th>Player</th>
+                  <th>Progress</th>
                   <th>Moves</th>
-                  <th>Correct</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {allPlayers.map(player => (
-                  <tr
-                    key={player.playerId}
-                    className={player.playerId === playerId ? 'current-player-row' : ''}
-                  >
-                    <td>
-                      {player.playerName || `Player ${player.playerId.slice(-4)}`}
-                      {player.playerId === playerId && <span className="you-badge"> (You)</span>}
-                    </td>
-                    <td>{player.moveCount || 0}</td>
-                    <td>{player.positionsCorrect || 0} / {Object.keys(tiles || {}).length || 4}</td>
-                    <td>
-                      {winnerPlayerId === player.playerId ? (
-                        <span className="winner-badge">🏆 Winner</span>
-                      ) : (
-                        <span className="playing-badge">Playing</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {allPlayers.map((player) => {
+                  const tileCount = Object.keys(tiles || {}).length || 4;
+                  const correct = player.positionsCorrect || 0;
+                  const progressPercent = (correct / tileCount) * 100;
+
+                  // Get stable color for this player
+                  const playerColor = playerColorMap[player.playerId];
+
+                  return (
+                    <tr
+                      key={player.playerId}
+                      className={player.playerId === playerId ? 'current-player-row' : ''}
+                    >
+                      <td>
+                        {player.playerName || `Player ${player.playerId.slice(-4)}`}
+                        {player.playerId === playerId && <span className="you-badge"> (You)</span>}
+                      </td>
+                      <td className="progress-cell">
+                        <div className="player-progress-bar">
+                          {Array.from({ length: tileCount }).map((_, i) => (
+                            <div
+                              key={i}
+                              className={`progress-segment ${i < correct ? 'filled' : 'empty'}`}
+                              style={{
+                                backgroundColor: i < correct ? playerColor : '#e0e0e0'
+                              }}
+                              title={`${correct} / ${tileCount} correct`}
+                            />
+                          ))}
+                        </div>
+                        <span className="progress-text">{correct}/{tileCount}</span>
+                      </td>
+                      <td>{player.moveCount || 0}</td>
+                      <td>
+                        {winnerPlayerId === player.playerId ? (
+                          <span className="winner-badge">🏆 Winner</span>
+                        ) : (
+                          <span className="playing-badge">Playing</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -705,6 +747,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
       {showGameOver && goalOrder && (
         <GameOverModal
           isWinner={winnerPlayerId === playerId}
+          winnerName={winnerName}
           goalOrder={goalOrder}
           tiles={tiles}
           moveCount={currentPlayerState?.moveCount}
