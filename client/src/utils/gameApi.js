@@ -204,7 +204,7 @@ export async function listGames(pubnub) {
       }
 
       page = response.next;
-    } while (page);
+    } while (page && page !== 'NA'); // Stop if no more pages or page is 'NA'
 
     console.log('[listGames] Total games found:', games.length);
 
