@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import Registration from './components/Registration';
-import Lobby from './components/Lobby';
+import LobbyV2 from './components/LobbyV2';
 import Game from './components/Game';
 import GamesHistory from './components/GamesHistory';
 import { APP_VERSION } from './version';
@@ -56,7 +56,7 @@ export default function App() {
       )}
 
       {appState === 'LOBBY' && playerInfo && (
-        <Lobby
+        <LobbyV2
           playerInfo={playerInfo}
           pubnubConfig={pubnubConfig}
           onJoinGame={handleJoinGame}
