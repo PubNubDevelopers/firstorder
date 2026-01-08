@@ -316,19 +316,8 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
     return () => {
       unsubscribeLobby();
     };
-  }, [
-    isConnected,
-    subscribe,
-    handlePresenceEvent,
-    handleGameCreated,
-    handleGameStarted,
-    handlePlayerJoinedGame,
-    handlePlayerLeftGame,
-    handleGameDeleted,
-    handleGameNameUpdated,
-    playerInfo.playerName
-    // NOTE: fetchLobbyPresence intentionally excluded to prevent infinite loop
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, playerInfo.playerName]);
 
   // Fetch game list separately - only once when component mounts
   useEffect(() => {

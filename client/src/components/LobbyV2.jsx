@@ -237,18 +237,8 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
       console.log('Unsubscribing from lobby...');
       unsubscribeLobby();
     };
-  }, [
-    isConnected,
-    subscribe,
-    handlePresenceEvent,
-    handleGameCreated,
-    handleGameStarted,
-    handlePlayerJoinedGame,
-    handlePlayerLeftGame,
-    handleGameDeleted,
-    handleGameNameUpdated
-    // NOTE: fetchLobbyPresence, fetchGameList, fetchRecentGames intentionally excluded to prevent infinite loop
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]);
 
   // Handle create game
   const handleCreateGame = async (options) => {
