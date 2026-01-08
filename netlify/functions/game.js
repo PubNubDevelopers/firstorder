@@ -187,6 +187,13 @@ async function createGame(pubnub, body) {
   // Generate unique game ID
   const gameId = generateGameId();
 
+  // Helper function to calculate default placements
+  function calculateDefaultPlacements(maxPlayers) {
+    if (maxPlayers === 1) return 1;
+    if (maxPlayers === 2) return 2;
+    return 3; // maxPlayers >= 3
+  }
+
   // Create new game state with options
   const gameState = {
     gameId,
@@ -195,6 +202,7 @@ async function createGame(pubnub, body) {
     tileCount: options.tileCount,
     emojiTheme: options.emojiTheme,
     maxPlayers: options.maxPlayers,
+    placementCount: options.placementCount || calculateDefaultPlacements(options.maxPlayers),
     tilePinningEnabled: options.tilePinningEnabled || false,
     verifiedPositionsEnabled: options.verifiedPositionsEnabled || false,
     players: {
@@ -211,9 +219,11 @@ async function createGame(pubnub, body) {
     playerIds: [playerId],
     playerNames: playerName ? { [playerId]: playerName } : {},
     playerLocations: location ? { [playerId]: location } : {},
+    placements: [],  // Array of {playerId, playerName, finishTT, placement}
     createdAt: Date.now(),
     startTT: null,
     winnerPlayerId: null,
+    winnerName: null,
     winTT: null,
     lockedTT: null,
     goalOrder: null,
@@ -672,6 +682,50 @@ async function leaveGame(pubnub, body) {
 
         if (game.playerLocations && game.playerLocations[playerId]) {
           delete game.playerLocations[playerId];
+        }
+
+        // Check if we need to adjust placements
+        const remainingPlayers = game.playerIds.length;
+        const finishedPlayers = game.placements?.length || 0;
+
+        // If remaining + finished < placementCount, we may need to end the game
+        if ((remainingPlayers + finishedPlayers) < game.placementCount) {
+          // Adjust effective placement count
+          game.placementCount = Math.max(1, remainingPlayers + finishedPlayers);
+
+          // Check if game should end now
+          if (finishedPlayers >= game.placementCount) {
+            game.phase = 'OVER';
+            game.endTT = Date.now().toString();
+
+            await storage.setGame(pubnub, gameId, game);
+
+            // Publish GAME_OVER
+            await pubnub.publish({
+              channel: `admin.${gameId}`,
+              message: {
+                v: 1,
+                type: 'GAME_OVER',
+                gameId,
+                phase: 'OVER',
+                placements: game.placements,
+                goalOrder: game.goalOrder,
+                endTT: game.endTT,
+                // Backward compatibility
+                winnerPlayerId: game.winnerPlayerId,
+                winnerName: game.winnerName,
+                winTT: game.winTT
+              }
+            });
+
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                message: 'Game ended (all placements filled after player left)'
+              }
+            };
+          }
         }
 
         await storage.setGame(pubnub, gameId, game);

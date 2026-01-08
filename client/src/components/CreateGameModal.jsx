@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { getThemeKeys, EMOJI_THEMES } from '../utils/emojiThemes';
 import { getRandomMovieName } from '../utils/movieNames';
 
@@ -13,10 +13,27 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
   const [emojiTheme, setEmojiTheme] = useState('food');
   const [playerMode, setPlayerMode] = useState('multiplayer'); // 'single' or 'multiplayer'
   const [maxPlayers, setMaxPlayers] = useState(2);
+  const [placementCount, setPlacementCount] = useState(2); // Default for 2 players
   const [gameName, setGameName] = useState(defaultMovieName);
   const [gameplayMode, setGameplayMode] = useState('none'); // 'none', 'pinning', 'verified'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Auto-adjust placementCount when maxPlayers or playerMode changes
+  useEffect(() => {
+    if (playerMode === 'single') {
+      setPlacementCount(1);
+    } else if (playerMode === 'multiplayer') {
+      if (maxPlayers === 2) {
+        setPlacementCount(Math.min(2, placementCount));
+      } else if (maxPlayers >= 3) {
+        // Default to 3 for multiplayer with 3+ players
+        if (placementCount < 3) {
+          setPlacementCount(3);
+        }
+      }
+    }
+  }, [maxPlayers, playerMode, placementCount]);
 
   const handleCreate = async () => {
     setLoading(true);
@@ -27,6 +44,7 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
         tileCount,
         emojiTheme,
         maxPlayers: playerMode === 'single' ? 1 : maxPlayers,
+        placementCount: playerMode === 'single' ? 1 : placementCount,
         gameName: gameName.trim() || null,
         tilePinningEnabled: gameplayMode === 'pinning',
         verifiedPositionsEnabled: gameplayMode === 'verified'
@@ -172,6 +190,43 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
               )}
               disabled={loading}
             />
+          </div>
+        )}
+
+        {/* Placement Count Selector - Only show for multiplayer */}
+        {playerMode === 'multiplayer' && (
+          <div className="form-group form-row">
+            <label>Finish Positions:</label>
+            <div className="tile-count-selector">
+              <button
+                type="button"
+                className={`tile-count-option ${placementCount === 1 ? 'selected' : ''}`}
+                onClick={() => setPlacementCount(1)}
+                disabled={loading}
+              >
+                1
+              </button>
+              {maxPlayers >= 2 && (
+                <button
+                  type="button"
+                  className={`tile-count-option ${placementCount === 2 ? 'selected' : ''}`}
+                  onClick={() => setPlacementCount(2)}
+                  disabled={loading}
+                >
+                  2
+                </button>
+              )}
+              {maxPlayers >= 3 && (
+                <button
+                  type="button"
+                  className={`tile-count-option ${placementCount === 3 ? 'selected' : ''}`}
+                  onClick={() => setPlacementCount(3)}
+                  disabled={loading}
+                >
+                  3
+                </button>
+              )}
+            </div>
           </div>
         )}
 

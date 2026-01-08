@@ -151,7 +151,7 @@ function handleMoveSubmit(message, gameId, request, pubnub) {
 
 /**
  * Handle win condition
- * Lock game and publish GAME_OVER
+ * Track placement and publish PLAYER_FINISHED, optionally GAME_OVER
  */
 function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, request) {
   const channelId = `game.${gameId}`;
@@ -160,17 +160,43 @@ function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, req
   gameState.players[playerId].finished = true;
   gameState.players[playerId].finishTT = moveTT;
 
-  // Set winner if not already set
+  // Initialize placements array if not exists
+  if (!gameState.placements) {
+    gameState.placements = [];
+  }
+
+  // Calculate current placement (1-indexed)
+  const currentPlacement = gameState.placements.length + 1;
+
+  // Add to placements array with full completion details
+  gameState.placements.push({
+    playerId: playerId,
+    playerName: gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`,
+    finishTT: moveTT,
+    moveCount: playerState.moveCount,
+    placement: currentPlacement
+  });
+
+  // Set first-place winner for backward compatibility
   if (!gameState.winnerPlayerId) {
     gameState.winnerPlayerId = playerId;
     gameState.winnerName = gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`;
     gameState.winTT = moveTT;
   }
 
-  // Mark game as over (keep for analytics)
-  gameState.phase = 'OVER';
-  gameState.endTT = Date.now().toString();
-  gameState.lockedTT = gameState.endTT; // Keep for backward compatibility
+  // Calculate effective placement count (may be reduced if players left)
+  const activePlayers = gameState.playerIds.length;
+  const effectivePlacementCount = Math.min(gameState.placementCount || 1, activePlayers);
+
+  // Check if all placements filled
+  const allPlacementsFilled = gameState.placements.length >= effectivePlacementCount;
+
+  // Only mark game as OVER if all placements filled
+  if (allPlacementsFilled) {
+    gameState.phase = 'OVER';
+    gameState.endTT = Date.now().toString();
+    gameState.lockedTT = gameState.endTT; // Keep for backward compatibility
+  }
 
   // Save game state to App Context
   return pubnub.objects.setChannelMetadata({
@@ -178,7 +204,7 @@ function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, req
     data: {
       name: gameState.gameName || `Game ${gameId}`,
       description: `First Order game - Status: ${gameState.phase}`,
-      status: gameState.phase, // Use basic status field (will be 'OVER')
+      status: gameState.phase,
       custom: {
         gameState: JSON.stringify(gameState),
         playerCount: gameState.playerIds.length,
@@ -199,23 +225,44 @@ function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, req
         moveTT: moveTT
       }
     }).then(() => {
-      // Then publish GAME_OVER to admin channel
+      // Publish PLAYER_FINISHED message to admin channel
       return pubnub.publish({
         channel: `admin.${gameId}`,
         message: {
           v: 1,
-          type: 'GAME_OVER',
+          type: 'PLAYER_FINISHED',
           gameId: gameId,
-          phase: 'OVER',
-          winnerPlayerId: gameState.winnerPlayerId,
-          winnerName: gameState.winnerName,
-          goalOrder: gameState.goalOrder,
-          winTT: gameState.winTT,
-          endTT: gameState.endTT
+          playerId: playerId,
+          playerName: gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`,
+          placement: currentPlacement,
+          moveCount: playerState.moveCount,
+          finishTT: moveTT,
+          placements: gameState.placements,
+          allPlacementsFilled: allPlacementsFilled
         }
       });
     }).then(() => {
-      console.log('Game over - winner:', gameState.winnerPlayerId);
+      // If all placements filled, publish GAME_OVER
+      if (allPlacementsFilled) {
+        return pubnub.publish({
+          channel: `admin.${gameId}`,
+          message: {
+            v: 1,
+            type: 'GAME_OVER',
+            gameId: gameId,
+            phase: 'OVER',
+            placements: gameState.placements,
+            goalOrder: gameState.goalOrder,
+            endTT: gameState.endTT,
+            // Backward compatibility
+            winnerPlayerId: gameState.winnerPlayerId,
+            winnerName: gameState.winnerName,
+            winTT: gameState.winTT
+          }
+        });
+      }
+    }).then(() => {
+      console.log('Player finished - placement:', currentPlacement, 'all filled:', allPlacementsFilled);
       // Abort the original MOVE_SUBMIT message
       return request.abort();
     });

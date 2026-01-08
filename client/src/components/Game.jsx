@@ -10,8 +10,10 @@ import {
   playPlayerJoinedSound,
   playYouJoinedSound,
   playWinnerSound,
-  playLoserSound
+  playLoserSound,
+  playPlacementSound
 } from '../utils/soundEffects';
+import musicPlayer from '../utils/musicPlayer';
 
 /**
  * Game component - main game interface
@@ -26,6 +28,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
   const [goalOrder, setGoalOrder] = useState(null);
   const [winnerPlayerId, setWinnerPlayerId] = useState(null);
   const [winnerName, setWinnerName] = useState(null);
+  const [placements, setPlacements] = useState([]);
   const [countdownValue, setCountdownValue] = useState(null);
   const [gameState, setGameState] = useState(initialGameName ? { gameName: initialGameName } : null);
 
@@ -45,8 +48,25 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
   const [isStartingGame, setIsStartingGame] = useState(false);
   const [isLeavingGame, setIsLeavingGame] = useState(false);
 
+  // Music state
+  const [musicMuted, setMusicMuted] = useState(musicPlayer.isMuted);
+
   // PubNub connection
   const { pubnub, publish, subscribe, isConnected, error: pubnubError } = usePubNub(pubnubConfig);
+
+  // Start background music when game loads
+  useEffect(() => {
+    musicPlayer.play();
+    return () => {
+      // Music continues between lobby and game, so don't stop it
+    };
+  }, []);
+
+  // Handle music mute toggle
+  const handleMusicToggle = () => {
+    const newMutedState = musicPlayer.toggleMute();
+    setMusicMuted(newMutedState);
+  };
 
   // Load initial game state and roster on mount
   useEffect(() => {
@@ -262,17 +282,52 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
           console.log('Updated player states after GAME_START:', updated);
           return updated;
         });
+      } else if (message.type === 'PLAYER_FINISHED') {
+        // Update placements array
+        setPlacements(message.placements || []);
+
+        // Update player state to mark as finished
+        setPlayerStates(prev => {
+          const updated = { ...prev };
+          if (updated[message.playerId]) {
+            updated[message.playerId].finished = true;
+            updated[message.playerId].placement = message.placement;
+            updated[message.playerId].finishTT = message.finishTT;
+          }
+          return updated;
+        });
+
+        // Play sound and show modal for this player
+        if (message.playerId === playerId) {
+          // This player finished - play appropriate sound
+          if (message.placement === 1) {
+            playWinnerSound();
+          } else if (message.placement === 2 || message.placement === 3) {
+            playPlacementSound(); // 2nd or 3rd place
+          } else {
+            playLoserSound(); // Beyond 3rd place
+          }
+
+          // Show modal immediately when this player finishes
+          setShowGameOver(true);
+        }
       } else if (message.type === 'GAME_OVER') {
         setGamePhase('OVER');
         setGoalOrder(message.goalOrder);
+        setPlacements(message.placements || []);
+
+        // Backward compatibility
         setWinnerPlayerId(message.winnerPlayerId);
         setWinnerName(message.winnerName);
+
         setShowGameOver(true);
 
-        // Play winner or loser sound based on who won
-        if (message.winnerPlayerId === playerId) {
-          playWinnerSound();
+        // Play appropriate sound if haven't finished yet
+        const myPlacement = message.placements?.find(p => p.playerId === playerId);
+        if (myPlacement) {
+          // Already played sound when PLAYER_FINISHED was received
         } else {
+          // Didn't finish - play loser sound
           playLoserSound();
         }
       }
@@ -546,13 +601,22 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
               </>
             )}
           </div>
-          <button
-            className="leave-game-button"
-            onClick={handleLeaveGame}
-            disabled={isStartingGame || isLeavingGame}
-          >
-            {isLeavingGame ? 'Leaving...' : 'Leave Game'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="music-button"
+              onClick={handleMusicToggle}
+              title={musicMuted ? "Unmute Music" : "Mute Music"}
+            >
+              {musicMuted ? '🔇' : '🎵'}
+            </button>
+            <button
+              className="leave-game-button"
+              onClick={handleLeaveGame}
+              disabled={isStartingGame || isLeavingGame}
+            >
+              {isLeavingGame ? 'Leaving...' : 'Leave Game'}
+            </button>
+          </div>
         </div>
 
         <div className="waiting-content">
@@ -626,7 +690,16 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
 
   const allPlayers = Object.values(playerStates)
     .filter(p => p && p.playerId)
-    .sort((a, b) => (b.positionsCorrect || 0) - (a.positionsCorrect || 0)); // Sort by correctness descending
+    .sort((a, b) => {
+      // Finished players first, sorted by placement
+      if (a.finished && !b.finished) return -1;
+      if (!a.finished && b.finished) return 1;
+      if (a.finished && b.finished) {
+        return (a.placement || 999) - (b.placement || 999);
+      }
+      // Active players sorted by progress
+      return (b.positionsCorrect || 0) - (a.positionsCorrect || 0);
+    });
 
   return (
     <div className="game-container">
@@ -637,12 +710,21 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
             {gamePhase === 'LIVE' ? 'Game in progress' : 'Game over'}
           </p>
         </div>
-        <button
-          className="leave-game-button"
-          onClick={handleLeaveGame}
-        >
-          Return to Lobby
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="music-button"
+            onClick={handleMusicToggle}
+            title={musicMuted ? "Unmute Music" : "Mute Music"}
+          >
+            {musicMuted ? '🔇' : '🎵'}
+          </button>
+          <button
+            className="leave-game-button"
+            onClick={handleLeaveGame}
+          >
+            Return to Lobby
+          </button>
+        </div>
       </div>
 
 
@@ -674,6 +756,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
             isCurrentPlayer={true}
             isGameOver={gamePhase === 'OVER'}
             isWinner={winnerPlayerId === playerId}
+            isFinished={currentPlayerState.finished || false}
             isPinningEnabled={gameState?.tilePinningEnabled || false}
             isVerifiedPositionsEnabled={gameState?.verifiedPositionsEnabled || false}
             onMove={handleMove}
@@ -728,8 +811,12 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
                       </td>
                       <td>{player.moveCount || 0}</td>
                       <td>
-                        {winnerPlayerId === player.playerId ? (
-                          <span className="winner-badge">🏆 Winner</span>
+                        {player.finished && player.placement ? (
+                          <span className={`placement-badge placement-${player.placement}`}>
+                            {player.placement === 1 && '🥇 1st'}
+                            {player.placement === 2 && '🥈 2nd'}
+                            {player.placement === 3 && '🥉 3rd'}
+                          </span>
                         ) : (
                           <span className="playing-badge">Playing</span>
                         )}
@@ -746,11 +833,13 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
       {/* Game over modal */}
       {showGameOver && goalOrder && (
         <GameOverModal
-          isWinner={winnerPlayerId === playerId}
-          winnerName={winnerName}
+          isWinner={placements?.[0]?.playerId === playerId}
+          winnerName={placements?.[0]?.playerName || winnerName}
           goalOrder={goalOrder}
           tiles={tiles}
           moveCount={currentPlayerState?.moveCount}
+          placements={placements}
+          playerId={playerId}
           onClose={() => setShowGameOver(false)}
           onReturnToLobby={onLeave}
         />

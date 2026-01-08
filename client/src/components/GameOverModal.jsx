@@ -108,6 +108,40 @@ const LOSER_MESSAGES = [
   "Defeat by\ndeduction"
 ];
 
+// 2nd/3rd Place messages (30)
+const PLACEMENT_MESSAGES = [
+  "Not bad!\nNot bad at all",
+  "Solid\nperformance",
+  "Made the\npodium",
+  "Top tier\nplayer",
+  "Earned your\nspot",
+  "Respect the\nhustle",
+  "Strong\nfinish",
+  "Well\nplayed",
+  "Came through\nin the clutch",
+  "That's\nimpressive",
+  "Almost\nhad it",
+  "Close to\nthe top",
+  "Respectable\nresult",
+  "Strong\nshowing",
+  "Held your\nown",
+  "Proved your\nworth",
+  "Made it\ncount",
+  "In the\nmix",
+  "Stayed\ncompetitive",
+  "Put in\nwork",
+  "Earned\nrecognition",
+  "Fought\nhard",
+  "Stayed in\ncontention",
+  "Made your\nmark",
+  "Hung\ntough",
+  "Credible\neffort",
+  "Not\ntoo shabby",
+  "Honorable\nmention",
+  "In the\nrunning",
+  "On the\nboard"
+];
+
 /**
  * GameOverModal component - displays game over message and goal order
  */
@@ -117,17 +151,30 @@ export default function GameOverModal({
   goalOrder,
   tiles,
   moveCount,
+  placements,
+  playerId,
   onClose,
   onReturnToLobby
 }) {
   const goalArray = orderToArray(goalOrder);
 
+  // Calculate player's placement
+  const myPlacement = placements?.find(p => p.playerId === playerId);
+  const placement = myPlacement?.placement;
+
   // Randomly select a message when component mounts
   const message = useMemo(() => {
-    const messages = isWinner ? WINNER_MESSAGES : LOSER_MESSAGES;
-    const randomIndex = Math.floor(Math.random() * messages.length);
-    return messages[randomIndex];
-  }, [isWinner]);
+    let messageArray;
+    if (placement === 1) {
+      messageArray = WINNER_MESSAGES;
+    } else if (placement === 2 || placement === 3) {
+      messageArray = PLACEMENT_MESSAGES;
+    } else {
+      messageArray = LOSER_MESSAGES;
+    }
+    const randomIndex = Math.floor(Math.random() * messageArray.length);
+    return messageArray[randomIndex];
+  }, [placement]);
 
   // Split message by newline for rendering
   const messageLines = message.split('\n');
@@ -135,11 +182,19 @@ export default function GameOverModal({
   return (
     <div className="game-over-modal" onClick={onClose}>
       <div className="game-over-content" onClick={(e) => e.stopPropagation()}>
-        <div className={`game-result-badge ${isWinner ? 'won-badge' : 'lost-badge'}`}>
-          {isWinner ? 'WIN' : 'LOSE'}
+        <div className={`game-result-badge ${
+          placement === 1 ? 'gold-badge' :
+          placement === 2 ? 'silver-badge' :
+          placement === 3 ? 'bronze-badge' :
+          'did-not-finish-badge'
+        }`}>
+          {placement === 1 && '🥇 1ST'}
+          {placement === 2 && '🥈 2ND'}
+          {placement === 3 && '🥉 3RD'}
+          {!placement && 'DNF'}
         </div>
 
-        <h2 className={isWinner ? 'winner-message' : 'loser-message'}>
+        <h2 className={placement === 1 ? 'winner-message' : 'loser-message'}>
           {messageLines.map((line, index) => (
             <React.Fragment key={index}>
               {line}
@@ -159,13 +214,39 @@ export default function GameOverModal({
           </div>
         </div>
 
-        {isWinner && moveCount !== undefined && (
+        {placement && moveCount !== undefined && (
           <div className="move-count-display">
             <p>Completed in <strong>{moveCount}</strong> {moveCount === 1 ? 'move' : 'moves'}</p>
           </div>
         )}
 
-        {!isWinner && winnerName && (
+        {placements && placements.length > 0 && (
+          <div className="leaderboard-display">
+            <h3>Final Results</h3>
+            <div className="leaderboard-list">
+              {placements.map((p) => (
+                <div key={p.playerId} className={`leaderboard-item ${p.playerId === playerId ? 'you' : ''}`}>
+                  <span className="leaderboard-medal">
+                    {p.placement === 1 && '🥇'}
+                    {p.placement === 2 && '🥈'}
+                    {p.placement === 3 && '🥉'}
+                  </span>
+                  <span className="leaderboard-name">
+                    {p.playerName}
+                    {p.playerId === playerId && ' (You)'}
+                  </span>
+                  <span className="leaderboard-place">
+                    {p.placement === 1 && '1st'}
+                    {p.placement === 2 && '2nd'}
+                    {p.placement === 3 && '3rd'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!placement && winnerName && (
           <div className="winner-name-display">
             <p><strong>{winnerName}</strong> won the game!</p>
           </div>

@@ -151,6 +151,49 @@ export function playLoserSound() {
 }
 
 /**
+ * Play placement sound - for 2nd/3rd place finishes
+ * A positive but not as triumphant sound as the winner
+ */
+export function playPlacementSound() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+
+    // Two-tone ascending pattern
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    // First tone
+    osc1.frequency.setValueAtTime(440, now);
+    osc1.frequency.setValueAtTime(550, now + 0.15);
+    osc1.type = 'sine';
+
+    // Second harmony tone
+    osc2.frequency.setValueAtTime(550, now);
+    osc2.frequency.setValueAtTime(660, now + 0.15);
+    osc2.type = 'sine';
+
+    // Envelope - slightly softer than winner
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc1.stop(now + 0.4);
+    osc2.start(now);
+    osc2.stop(now + 0.4);
+  } catch (error) {
+    console.warn('Error playing placement sound:', error);
+  }
+}
+
+/**
  * Play countdown beep - single high beep
  */
 export function playCountdownBeep() {

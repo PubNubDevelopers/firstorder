@@ -6,6 +6,7 @@ import HelpModal from './HelpModal';
 import { getLocationDisplay } from '../utils/flagEmojis';
 import { getPlayerLocation } from '../utils/playerStorage';
 import { EMOJI_THEMES } from '../utils/emojiThemes';
+import musicPlayer from '../utils/musicPlayer';
 
 /**
  * GameCard component - Accordion-style game card with expandable player list
@@ -110,8 +111,23 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave })
   const [availableGames, setAvailableGames] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [musicMuted, setMusicMuted] = useState(musicPlayer.isMuted);
 
   const { isConnected, subscribe, unsubscribe, hereNow, pubnub } = usePubNub(pubnubConfig);
+
+  // Start background music when lobby loads
+  useEffect(() => {
+    musicPlayer.play();
+    return () => {
+      musicPlayer.stop();
+    };
+  }, []);
+
+  // Handle music mute toggle
+  const handleMusicToggle = () => {
+    const newMutedState = musicPlayer.toggleMute();
+    setMusicMuted(newMutedState);
+  };
 
   // Fetch initial presence list with state
   const fetchLobbyPresence = useCallback(async () => {
@@ -435,9 +451,18 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave })
           <h1>First Order Lobby</h1>
           <p className="game-info">Welcome, {playerInfo.playerName}!</p>
         </div>
-        <button className="help-button" onClick={() => setShowHelp(true)} title="How to Play">
-          ? Help
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="music-button"
+            onClick={handleMusicToggle}
+            title={musicMuted ? "Unmute Music" : "Mute Music"}
+          >
+            {musicMuted ? '🔇' : '🎵'}
+          </button>
+          <button className="help-button" onClick={() => setShowHelp(true)} title="How to Play">
+            ? Help
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-message">{error}</div>}

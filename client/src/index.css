@@ -505,6 +505,33 @@ input:focus {
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
+.gold-badge {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #171717;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.silver-badge {
+  background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+  color: #171717;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.bronze-badge {
+  background: linear-gradient(135deg, #cd7f32 0%, #e89a5c 100%);
+  color: #f9f9f9;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.did-not-finish-badge {
+  background: #999;
+  color: #f9f9f9;
+  font-size: 36px;
+  font-weight: 600;
+  padding: 12px 32px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
 .goal-tiles {
   display: flex;
   flex-wrap: nowrap;
@@ -766,6 +793,32 @@ input:focus {
   border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* Placement Badges */
+.placement-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.placement-1 {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #171717;
+}
+
+.placement-2 {
+  background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+  color: #171717;
+}
+
+.placement-3 {
+  background: linear-gradient(135deg, #cd7f32 0%, #e89a5c 100%);
+  color: #f9f9f9;
 }
 
 /* Player Progress Bar */
@@ -1061,8 +1114,8 @@ input:focus {
 }
 
 .game-card:hover {
-  border-color: #c71929;
-  box-shadow: 0 4px 12px rgba(199, 36, 255, 0.2);
+  border-color: #528dfa;
+  box-shadow: 0 4px 12px rgba(82, 141, 250, 0.2);
 }
 
 .game-card-header {
@@ -1344,6 +1397,36 @@ input:focus {
   cursor: not-allowed;
 }
 
+.music-button {
+  height: 40px;
+  min-width: 40px;
+  padding: 8px 12px;
+  font-size: 20px;
+  background: #528dfa;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.music-button:hover:not(:disabled) {
+  background: #3a6fd8;
+  transform: scale(1.05);
+}
+
+.music-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.music-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -1559,7 +1642,7 @@ input:focus {
 }
 
 .game-card-header:hover {
-  background: linear-gradient(135deg, #b020e6 0%, #e60070 100%);
+  background: linear-gradient(135deg, #3a6fd8 0%, #528dfa 100%);
 }
 
 .header-content {
@@ -1859,6 +1942,24 @@ input:focus {
   color: #171717;
 }
 
+/* ===== Version Badge ===== */
+.version-badge {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #999;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Monaco', 'Courier New', monospace;
+  border-radius: 4px;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+  user-select: none;
+  pointer-events: none;
+}
+
 /* ===== PubNub Credits ===== */
 .pubnub-credits {
   position: fixed;
@@ -1881,4 +1982,57 @@ input:focus {
 .pubnub-credits a:hover {
   color: #c71929;
   text-decoration: underline;
+}
+
+/* Leaderboard Display */
+.leaderboard-display {
+  margin: 20px 0;
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 12px;
+}
+
+.leaderboard-display h3 {
+  margin: 0 0 16px 0;
+  color: #171717;
+  font-size: 20px;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.leaderboard-item.you {
+  background: #fff9e6;
+  border-color: #ffd700;
+}
+
+.leaderboard-medal {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.leaderboard-name {
+  flex: 1;
+  font-weight: 600;
+  color: #171717;
+}
+
+.leaderboard-place {
+  font-weight: 700;
+  color: #528dfa;
+  font-size: 16px;
 }

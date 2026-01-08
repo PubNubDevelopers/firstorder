@@ -18,6 +18,7 @@ export default function PlayerBoard({
   isCurrentPlayer,
   isGameOver,
   isWinner,
+  isFinished,
   isPinningEnabled,
   isVerifiedPositionsEnabled,
   onMove
@@ -65,8 +66,8 @@ export default function PlayerBoard({
 
   const handleTileClick = (position) => {
     // Only allow clicks for current player and during active game
-    // Disable clicks during animation
-    if (!isCurrentPlayer || isGameOver || swappingPositions) {
+    // Disable clicks during animation or if player has finished
+    if (!isCurrentPlayer || isGameOver || isFinished || swappingPositions) {
       return;
     }
 
@@ -96,6 +97,11 @@ export default function PlayerBoard({
   };
 
   const handlePinToggle = (position) => {
+    // Don't allow pinning if player has finished
+    if (isFinished) {
+      return;
+    }
+
     setPinnedPositions(prev => {
       const updated = new Set(prev);
       if (updated.has(position)) {
@@ -173,11 +179,11 @@ export default function PlayerBoard({
               position={position}
               isSelected={isSelected}
               isCorrect={isCorrect}
-              isDisabled={!isCurrentPlayer || isGameOver}
+              isDisabled={!isCurrentPlayer || isGameOver || isFinished}
               isSwapping={isSwapping}
               swapOffset={swapOffset}
               isPinned={pinnedPositions.has(position)}
-              isPinningEnabled={isPinningEnabled && isCurrentPlayer && !isGameOver}
+              isPinningEnabled={isPinningEnabled && isCurrentPlayer && !isGameOver && !isFinished}
               isVerified={isVerified}
               isVerifiedPositionsEnabled={isVerifiedPositionsEnabled}
               onClick={handleTileClick}

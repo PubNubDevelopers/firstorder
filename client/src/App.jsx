@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import Registration from './components/Registration';
 import Lobby from './components/Lobby';
 import Game from './components/Game';
+import { APP_VERSION } from './version';
 
 /**
  * Main App component
@@ -61,6 +62,11 @@ export default function App() {
           onLeave={handleLeaveGame}
         />
       )}
+
+      {/* Version Badge */}
+      <div className="version-badge">
+        v{APP_VERSION}
+      </div>
 
       {/* PubNub Credits */}
       <div className="pubnub-credits">
