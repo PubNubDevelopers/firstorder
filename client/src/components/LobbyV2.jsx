@@ -76,7 +76,8 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
       console.error('Error fetching game list:', err);
       setAvailableGames([]);
     }
-  }, [pubnub]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - we check pubnub exists inside the function
 
   // Fetch recent completed games (for sidebar widget)
   const fetchRecentGames = useCallback(async () => {
@@ -118,7 +119,8 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     } catch (err) {
       console.error('Error fetching recent games:', err);
     }
-  }, [pubnub]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - we check pubnub exists inside the function
 
   // Handle presence events
   const handlePresenceEvent = useCallback((event) => {
@@ -290,7 +292,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     fetchGameList();
     fetchRecentGames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pubnub]); // Run when pubnub becomes available
+  }, [fetchGameList, fetchRecentGames]); // Run when fetch functions are available (stable with empty deps)
 
   // Handle create game
   const handleCreateGame = async (options) => {
