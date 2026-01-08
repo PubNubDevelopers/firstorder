@@ -127,25 +127,32 @@ const pubnubConfig = {
 
 **Pattern**: Query once on mount, update via subscriptions:
 ```javascript
-// Lobby.jsx pattern
+// LobbyV2.jsx / Lobby.jsx pattern
 const fetchGameList = useCallback(async () => {
   const result = await listGames(pubnub);
   setAvailableGames(result.games);
 }, [pubnub]);
 
 useEffect(() => {
+  if (!isConnected) return;
+
   // Subscribe to real-time events
-  subscribe('lobby', handleMessage);
+  const unsubscribeLobby = subscribe('lobby', handleMessage);
 
   // Initial query (only runs once)
   fetchGameList();
 
-  return () => unsubscribe('lobby');
-}, [
-  subscribe,
-  // NOTE: fetchGameList intentionally excluded to prevent infinite loop
-]);
+  return () => unsubscribeLobby();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isConnected]);
 ```
+
+**Why minimal dependencies?**
+- Handler functions (`handleMessage`, etc.) are `useCallback` with state deps
+- Including them causes effect to re-run on every state change → infinite loop
+- `subscribe` callback recreates when `pubnub` changes → triggers effect
+- Solution: Only depend on `isConnected`, use stable closures for functions
+- Use `eslint-disable-next-line` to suppress exhaustive-deps warning
 
 ### 3. Client vs Backend Responsibilities
 
