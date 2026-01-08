@@ -102,7 +102,7 @@ function GameCard({ game, playerInfo, onJoin, loading }) {
 /**
  * Lobby component - game setup screen with presence and real-time game listing
  */
-export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave }) {
+export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, onViewHistory }) {
   const [gameId, setGameId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -452,6 +452,13 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave })
           <p className="game-info">Welcome, {playerInfo.playerName}!</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="history-button"
+            onClick={onViewHistory}
+            title="View Games History"
+          >
+            📜 History
+          </button>
           <button
             className="music-button"
             onClick={handleMusicToggle}

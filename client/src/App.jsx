@@ -2,13 +2,14 @@ import React, { useState, useMemo } from 'react';
 import Registration from './components/Registration';
 import Lobby from './components/Lobby';
 import Game from './components/Game';
+import GamesHistory from './components/GamesHistory';
 import { APP_VERSION } from './version';
 
 /**
  * Main App component
  */
 export default function App() {
-  const [appState, setAppState] = useState('REGISTRATION'); // REGISTRATION, LOBBY, GAME
+  const [appState, setAppState] = useState('REGISTRATION'); // REGISTRATION, LOBBY, GAME, HISTORY
   const [playerInfo, setPlayerInfo] = useState(null);
   const [gameConfig, setGameConfig] = useState(null);
 
@@ -39,6 +40,14 @@ export default function App() {
     setAppState('REGISTRATION');
   };
 
+  const handleViewHistory = () => {
+    setAppState('HISTORY');
+  };
+
+  const handleBackToLobby = () => {
+    setAppState('LOBBY');
+  };
+
   return (
     <div className="app">
 
@@ -52,6 +61,14 @@ export default function App() {
           pubnubConfig={pubnubConfig}
           onJoinGame={handleJoinGame}
           onLeave={handleLeaveLobby}
+          onViewHistory={handleViewHistory}
+        />
+      )}
+
+      {appState === 'HISTORY' && playerInfo && (
+        <GamesHistory
+          pubnubConfig={pubnubConfig}
+          onBack={handleBackToLobby}
         />
       )}
 
