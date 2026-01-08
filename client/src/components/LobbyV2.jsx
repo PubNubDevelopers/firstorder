@@ -194,57 +194,84 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     ));
   }, []);
 
-  // Subscribe to lobby channel
+  // Subscribe to lobby channel - runs once on mount, waits for connection
   useEffect(() => {
-    if (!isConnected) return;
-    if (initializedRef.current) return; // Already initialized, don't run again
+    console.log('[LobbyV2] useEffect triggered, isConnected:', isConnected);
 
-    console.log('Subscribing to lobby channel (first time only)...');
-    initializedRef.current = true;
+    // Wait for PubNub to be ready
+    const waitForConnection = async () => {
+      // Poll for connection if not yet connected
+      let attempts = 0;
+      while (!isConnected && attempts < 50) {
+        console.log('[LobbyV2] Waiting for PubNub connection...', attempts);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
 
-    const unsubscribeLobby = subscribe('lobby', (event) => {
-      if (event.action) {
-        handlePresenceEvent(event);
+      if (!isConnected) {
+        console.error('[LobbyV2] Timed out waiting for PubNub connection');
+        return null;
+      }
+
+      return true;
+    };
+
+    // Initialize once
+    waitForConnection().then(connected => {
+      if (!connected) return;
+      if (initializedRef.current) {
+        console.log('[LobbyV2] Already initialized, skipping');
         return;
       }
 
-      const { message } = event;
-      if (!message) return;
+      console.log('[LobbyV2] Initializing lobby subscriptions (one time only)');
+      initializedRef.current = true;
 
-      switch (message.type) {
-        case 'GAME_CREATED':
-          handleGameCreated(message);
-          break;
-        case 'GAME_STARTED':
-          handleGameStarted(message);
-          break;
-        case 'PLAYER_JOINED_GAME':
-          handlePlayerJoinedGame(message);
-          break;
-        case 'PLAYER_LEFT_GAME':
-          handlePlayerLeftGame(message);
-          break;
-        case 'GAME_DELETED':
-          handleGameDeleted(message);
-          break;
-        case 'GAME_NAME_UPDATED':
-          handleGameNameUpdated(message);
-          break;
-      }
+      const unsubscribeLobby = subscribe('lobby', (event) => {
+        if (event.action) {
+          handlePresenceEvent(event);
+          return;
+        }
+
+        const { message } = event;
+        if (!message) return;
+
+        switch (message.type) {
+          case 'GAME_CREATED':
+            handleGameCreated(message);
+            break;
+          case 'GAME_STARTED':
+            handleGameStarted(message);
+            break;
+          case 'PLAYER_JOINED_GAME':
+            handlePlayerJoinedGame(message);
+            break;
+          case 'PLAYER_LEFT_GAME':
+            handlePlayerLeftGame(message);
+            break;
+          case 'GAME_DELETED':
+            handleGameDeleted(message);
+            break;
+          case 'GAME_NAME_UPDATED':
+            handleGameNameUpdated(message);
+            break;
+        }
+      });
+
+      // Fetch initial data (only once)
+      console.log('[LobbyV2] Fetching initial lobby data');
+      fetchLobbyPresence();
+      fetchGameList();
+      fetchRecentGames();
     });
 
-    // Fetch initial data (only once)
-    fetchLobbyPresence();
-    fetchGameList();
-    fetchRecentGames();
-
     return () => {
-      console.log('Unsubscribing from lobby...');
-      initializedRef.current = false; // Reset on unmount
-      unsubscribeLobby();
+      console.log('[LobbyV2] Cleanup - unsubscribing from lobby');
+      initializedRef.current = false;
+      // Note: unsubscribeLobby is only available if initialization completed
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected]);
+  }, []); // Empty array - run once on mount only
 
   // Handle create game
   const handleCreateGame = async (options) => {
