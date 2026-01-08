@@ -326,8 +326,8 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
     handlePlayerLeftGame,
     handleGameDeleted,
     handleGameNameUpdated,
-    fetchLobbyPresence,
     playerInfo.playerName
+    // NOTE: fetchLobbyPresence intentionally excluded to prevent infinite loop
   ]);
 
   // Fetch game list separately - only once when component mounts
