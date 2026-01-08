@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createGame, joinGame as joinGameApi, listGames } from '../utils/gameApi';
 import { usePubNub } from '../hooks/usePubNub';
 import CreateGameModal from './CreateGameModal';
@@ -28,6 +28,8 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
   const [showHelp, setShowHelp] = useState(false);
   const [quickplaySearching, setQuickplaySearching] = useState(false);
   const [musicMuted, setMusicMuted] = useState(musicPlayer.isMuted);
+
+  const initializedRef = useRef(false);
 
   const { isConnected, subscribe, unsubscribe, hereNow, pubnub } = usePubNub(pubnubConfig);
 
@@ -195,8 +197,11 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
   // Subscribe to lobby channel
   useEffect(() => {
     if (!isConnected) return;
+    if (initializedRef.current) return; // Already initialized, don't run again
 
-    console.log('Subscribing to lobby channel...');
+    console.log('Subscribing to lobby channel (first time only)...');
+    initializedRef.current = true;
+
     const unsubscribeLobby = subscribe('lobby', (event) => {
       if (event.action) {
         handlePresenceEvent(event);
@@ -228,13 +233,14 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
       }
     });
 
-    // Fetch initial data
+    // Fetch initial data (only once)
     fetchLobbyPresence();
     fetchGameList();
     fetchRecentGames();
 
     return () => {
       console.log('Unsubscribing from lobby...');
+      initializedRef.current = false; // Reset on unmount
       unsubscribeLobby();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
