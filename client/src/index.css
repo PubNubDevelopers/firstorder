@@ -2100,8 +2100,6 @@ input:focus {
   padding: 16px 20px;
   gap: 12px;
   background: #f9f9f9;
-  cursor: pointer;
-  user-select: none;
 }
 
 .game-history-header .header-content {
@@ -2136,64 +2134,45 @@ input:focus {
   font-weight: 500;
 }
 
-.winner-summary {
+/* Compact placements row - horizontal display */
+.placements-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.winner-badge {
-  padding: 6px 12px;
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
-  color: #171717;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.more-placements {
-  font-size: 13px;
-  color: #999;
-  font-style: italic;
-}
-
-/* Game History Body - Expandable */
-.game-history-body {
-  padding: 20px;
-  border-top: 1px solid #e0e0e0;
-  background: white;
-}
-
-.game-history-body h4 {
-  margin: 0 0 16px 0;
-  color: #171717;
-  font-size: 16px;
-}
-
-.player-results-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.player-result-item {
-  display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
-  padding: 12px 16px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  margin-top: 12px;
 }
 
-.player-result-rank {
-  min-width: 60px;
-  text-align: center;
+.placement-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.placement-item:hover {
+  background: #fff;
+  border-color: #528dfa;
 }
 
 .placement-medal {
-  font-size: 24px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.placement-name {
+  font-weight: 600;
+  color: #171717;
+  font-size: 14px;
+}
+
+.placement-moves {
+  font-size: 12px;
+  color: #666;
+  margin-left: 2px;
 }
 
 .placement-text {

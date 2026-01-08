@@ -102,8 +102,6 @@ async function fetchCompletedGames(pubnub, limit = 10, page = null) {
  * GameHistoryCard component - displays a single completed game
  */
 function GameHistoryCard({ game }) {
-  const [expanded, setExpanded] = useState(false);
-
   // Format completion date/time
   const completionDate = new Date(game.endTT);
   const dateStr = completionDate.toLocaleDateString('en-US', {
@@ -123,7 +121,8 @@ function GameHistoryCard({ game }) {
     : (game.winnerPlayerId ? [{
         playerId: game.winnerPlayerId,
         playerName: game.winnerName,
-        placement: 1
+        placement: 1,
+        moveCount: game.players[game.winnerPlayerId]?.moveCount || null
       }] : []);
 
   // Get all players with their finish info
@@ -136,7 +135,7 @@ function GameHistoryCard({ game }) {
       playerName: game.playerNames[playerId] || `Player ${playerId.slice(-4)}`,
       location: game.playerLocations?.[playerId],
       placement: placement?.placement || null,
-      moveCount: playerState.moveCount || null,
+      moveCount: placement?.moveCount || playerState.moveCount || null,
       finished: playerState.finished || false
     };
   });
@@ -151,14 +150,13 @@ function GameHistoryCard({ game }) {
     return 0;
   });
 
+  // Get only finished players for compact display
+  const finishedPlayers = allPlayers.filter(p => p.finished);
+
   return (
     <div className="game-history-card">
       <div className="game-history-header">
-        <div
-          className="header-content"
-          onClick={() => setExpanded(!expanded)}
-          style={{ cursor: 'pointer', flex: 1 }}
-        >
+        <div className="header-content">
           <h3>
             {game.gameName || `Game ${game.gameId}`}
             <span className="game-id-badge">{game.gameId}</span>
@@ -183,59 +181,27 @@ function GameHistoryCard({ game }) {
             </span>
           </div>
 
-          {/* Winner display (collapsed view) */}
-          {!expanded && placements.length > 0 && (
-            <div className="winner-summary">
-              <span className="winner-badge">
-                🥇 {placements[0].playerName}
-              </span>
-              {placements.length > 1 && (
-                <span className="more-placements">
-                  +{placements.length - 1} more
-                </span>
-              )}
+          {/* Compact placements display - all finishers shown horizontally */}
+          {finishedPlayers.length > 0 && (
+            <div className="placements-row">
+              {finishedPlayers.map((player, index) => (
+                <div key={player.playerId} className="placement-item">
+                  <span className="placement-medal">
+                    {player.placement === 1 && '🥇'}
+                    {player.placement === 2 && '🥈'}
+                    {player.placement === 3 && '🥉'}
+                    {player.placement > 3 && `${player.placement}.`}
+                  </span>
+                  <span className="placement-name">{player.playerName}</span>
+                  {player.moveCount !== null && (
+                    <span className="placement-moves">({player.moveCount})</span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
-        <span
-          className={`accordion-icon ${expanded ? 'expanded' : ''}`}
-          onClick={() => setExpanded(!expanded)}
-          style={{ cursor: 'pointer' }}
-        >
-          ▼
-        </span>
       </div>
-
-      {/* Expandable player results */}
-      {expanded && (
-        <div className="game-history-body">
-          <h4>Final Results</h4>
-          <div className="player-results-list">
-            {allPlayers.map((player, index) => (
-              <div key={player.playerId} className="player-result-item">
-                <div className="player-result-rank">
-                  {player.placement === 1 && <span className="placement-medal">🥇</span>}
-                  {player.placement === 2 && <span className="placement-medal">🥈</span>}
-                  {player.placement === 3 && <span className="placement-medal">🥉</span>}
-                  {!player.placement && player.finished && <span className="placement-text">Finished</span>}
-                  {!player.finished && <span className="dnf-badge">DNF</span>}
-                </div>
-                <div className="player-result-info">
-                  <span className="location-flags">
-                    {getLocationDisplay(player.location)}
-                  </span>
-                  <span className="player-result-name">{player.playerName}</span>
-                </div>
-                {player.moveCount !== null && (
-                  <div className="player-result-moves">
-                    {player.moveCount} {player.moveCount === 1 ? 'move' : 'moves'}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -270,7 +236,11 @@ export default function GamesHistory({ pubnubConfig, onBack }) {
 
       const result = await fetchCompletedGames(pubnub, size, pageCursor);
       setGames(result.games);
-      setTotalCount(result.totalCount);
+
+      // Set total count (use result.totalCount if available, otherwise estimate)
+      if (result.totalCount) {
+        setTotalCount(result.totalCount);
+      }
 
       // Store next/prev cursors for navigation
       if (result.next) {
@@ -279,6 +249,8 @@ export default function GamesHistory({ pubnubConfig, onBack }) {
       if (result.prev) {
         setPages(prev => ({ ...prev, [pageNum - 1]: result.prev }));
       }
+
+      console.log('[GamesHistory] Loaded page', pageNum, 'with', result.games.length, 'games, totalCount:', result.totalCount);
     } catch (err) {
       console.error('Error loading games history:', err);
       setError('Failed to load games history');
