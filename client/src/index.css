@@ -1962,10 +1962,11 @@ input:focus {
 
 /* ===== Games History ===== */
 .games-history {
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
   min-height: 100vh;
+  background: linear-gradient(135deg, #f9f9f9 0%, #ffffff 100%);
 }
 
 .history-header {
@@ -1973,8 +1974,10 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #e0e0e0;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   gap: 20px;
 }
 
@@ -1984,11 +1987,12 @@ input:focus {
   margin: 0;
   flex: 1;
   text-align: center;
+  text-shadow: 0 1px 2px rgba(199, 25, 41, 0.1);
 }
 
 .back-button {
   padding: 10px 20px;
-  background: #666;
+  background: linear-gradient(135deg, #c71929 0%, #a01420 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -1996,16 +2000,18 @@ input:focus {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(199, 25, 41, 0.2);
 }
 
 .back-button:hover {
-  background: #528dfa;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #e60070 0%, #b30059 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(199, 25, 41, 0.3);
 }
 
 .history-button {
   padding: 8px 16px;
-  background: #666;
+  background: linear-gradient(135deg, #c71929 0%, #a01420 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -2013,11 +2019,13 @@ input:focus {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(199, 25, 41, 0.2);
 }
 
 .history-button:hover {
-  background: #528dfa;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #e60070 0%, #b30059 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(199, 25, 41, 0.3);
 }
 
 .page-size-selector {
@@ -2025,27 +2033,48 @@ input:focus {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: #666;
-}
-
-.page-size-selector label {
+  color: #171717;
   font-weight: 600;
 }
 
+.page-size-selector label {
+  font-weight: 700;
+  color: #171717;
+}
+
 .page-size-selector select {
-  padding: 6px 10px;
-  border: 1px solid #ddd;
+  padding: 6px 12px;
+  border: 2px solid #c71929;
   border-radius: 6px;
   font-size: 14px;
   background: white;
   cursor: pointer;
+  font-weight: 600;
+  color: #171717;
+  transition: all 0.2s ease;
+}
+
+.page-size-selector select:hover {
+  border-color: #e60070;
+  box-shadow: 0 0 0 3px rgba(199, 25, 41, 0.1);
+}
+
+.page-size-selector select:focus {
+  outline: none;
+  border-color: #528dfa;
+  box-shadow: 0 0 0 3px rgba(82, 141, 250, 0.2);
 }
 
 .history-stats {
   text-align: center;
   margin-bottom: 20px;
-  color: #666;
+  padding: 12px 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  color: #171717;
   font-size: 14px;
+  font-weight: 600;
 }
 
 .loading-container {
@@ -2087,19 +2116,21 @@ input:focus {
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .game-history-card:hover {
-  border-color: #528dfa;
-  box-shadow: 0 4px 12px rgba(82, 141, 250, 0.15);
+  border-color: #c71929;
+  box-shadow: 0 4px 12px rgba(199, 25, 41, 0.15);
+  transform: translateY(-2px);
 }
 
 .game-history-header {
   display: flex;
   align-items: flex-start;
-  padding: 16px 20px;
+  padding: 20px;
   gap: 12px;
-  background: #f9f9f9;
+  background: linear-gradient(135deg, #f9f9f9 0%, #ffffff 100%);
 }
 
 .game-history-header .header-content {
@@ -2107,31 +2138,32 @@ input:focus {
 }
 
 .game-history-header h3 {
-  margin: 0 0 8px 0;
-  color: #171717;
+  margin: 0 0 12px 0;
+  color: #c71929;
   font-size: 20px;
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  font-weight: 700;
 }
 
 .game-history-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .date-badge,
 .duration-badge {
-  padding: 4px 10px;
-  background: #fff;
-  border: 1px solid #ddd;
+  padding: 6px 12px;
+  background: white;
+  border: 2px solid #528dfa;
   border-radius: 6px;
   font-size: 13px;
-  color: #666;
-  font-weight: 500;
+  color: #171717;
+  font-weight: 600;
 }
 
 /* Compact placements row - horizontal display */
@@ -2146,16 +2178,19 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: #f9f9f9;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #f9f9f9 0%, #ffffff 100%);
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .placement-item:hover {
-  background: #fff;
-  border-color: #528dfa;
+  background: white;
+  border-color: #c71929;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(199, 25, 41, 0.1);
 }
 
 .placement-medal {
@@ -2164,7 +2199,7 @@ input:focus {
 }
 
 .placement-name {
-  font-weight: 600;
+  font-weight: 700;
   color: #171717;
   font-size: 14px;
 }
@@ -2173,6 +2208,7 @@ input:focus {
   font-size: 12px;
   color: #666;
   margin-left: 2px;
+  font-weight: 600;
 }
 
 .placement-text {
@@ -2219,32 +2255,37 @@ input:focus {
 
 .pagination-button {
   padding: 10px 20px;
-  background: #528dfa;
+  background: linear-gradient(135deg, #c71929 0%, #a01420 100%);
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(199, 25, 41, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .pagination-button:hover:not(:disabled) {
-  background: #3d7ae8;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #e60070 0%, #b30059 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(199, 25, 41, 0.3);
 }
 
 .pagination-button:disabled {
   background: #ccc;
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.5;
+  box-shadow: none;
 }
 
 .page-info {
   padding: 0 20px;
-  font-weight: 600;
-  color: #171717;
-  font-size: 14px;
+  font-weight: 700;
+  color: #c71929;
+  font-size: 16px;
 }
 
 /* Responsive */
