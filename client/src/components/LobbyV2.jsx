@@ -194,31 +194,31 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     ));
   }, []);
 
-  // Subscribe to lobby channel - runs once on mount, waits for connection
+  // Subscribe to lobby channel - runs once on mount, waits for pubnub to be ready
   useEffect(() => {
-    console.log('[LobbyV2] useEffect triggered, isConnected:', isConnected);
+    console.log('[LobbyV2] useEffect triggered, pubnub:', !!pubnub, 'isConnected:', isConnected);
 
-    // Wait for PubNub to be ready
-    const waitForConnection = async () => {
-      // Poll for connection if not yet connected
+    // Wait for PubNub instance to be ready
+    const waitForPubNub = async () => {
       let attempts = 0;
-      while (!isConnected && attempts < 50) {
-        console.log('[LobbyV2] Waiting for PubNub connection...', attempts);
+      while (!pubnub && attempts < 50) {
+        console.log('[LobbyV2] Waiting for PubNub instance...', attempts);
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
       }
 
-      if (!isConnected) {
-        console.error('[LobbyV2] Timed out waiting for PubNub connection');
+      if (!pubnub) {
+        console.error('[LobbyV2] Timed out waiting for PubNub instance');
         return null;
       }
 
+      console.log('[LobbyV2] PubNub instance ready');
       return true;
     };
 
     // Initialize once
-    waitForConnection().then(connected => {
-      if (!connected) return;
+    waitForPubNub().then(ready => {
+      if (!ready) return;
       if (initializedRef.current) {
         console.log('[LobbyV2] Already initialized, skipping');
         return;
