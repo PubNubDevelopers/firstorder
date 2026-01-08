@@ -36,6 +36,12 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
 
   const { isConnected, subscribe, unsubscribe, hereNow, pubnub } = usePubNub(pubnubConfig);
 
+  // Use ref to avoid stale closure with pubnub
+  const pubnubRef = useRef(pubnub);
+  useEffect(() => {
+    pubnubRef.current = pubnub;
+  }, [pubnub]);
+
   // Start background music when lobby loads and reset fetch ref on unmount
   useEffect(() => {
     musicPlayer.play();
@@ -66,26 +72,33 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
 
   // Fetch initial game list
   const fetchGameList = useCallback(async () => {
-    if (!pubnub) return;
+    if (!pubnubRef.current) {
+      console.log('[fetchGameList] PubNub not ready yet');
+      return;
+    }
 
     try {
-      console.log('Fetching game list...');
-      const result = await listGames(pubnub);
+      console.log('[fetchGameList] Fetching game list with PubNub...');
+      const result = await listGames(pubnubRef.current);
+      console.log('[fetchGameList] Got games:', result.games?.length || 0);
       setAvailableGames(result.games || []);
     } catch (err) {
-      console.error('Error fetching game list:', err);
+      console.error('[fetchGameList] Error:', err);
       setAvailableGames([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - we check pubnub exists inside the function
+  }, []); // Empty deps - uses ref to get current pubnub
 
   // Fetch recent completed games (for sidebar widget)
   const fetchRecentGames = useCallback(async () => {
-    if (!pubnub) return;
+    if (!pubnubRef.current) {
+      console.log('[fetchRecentGames] PubNub not ready yet');
+      return;
+    }
 
     try {
+      console.log('[fetchRecentGames] Fetching recent completed games...');
       // Use PubNub App Context to get recent completed games
-      const response = await pubnub.objects.getAllChannelMetadata({
+      const response = await pubnubRef.current.objects.getAllChannelMetadata({
         limit: 5,
         include: {
           customFields: true,
@@ -115,12 +128,12 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
 
       // Sort by endTT descending
       games.sort((a, b) => b.endTT - a.endTT);
+      console.log('[fetchRecentGames] Got recent games:', games.length);
       setRecentGames(games);
     } catch (err) {
-      console.error('Error fetching recent games:', err);
+      console.error('[fetchRecentGames] Error:', err);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - we check pubnub exists inside the function
+  }, []); // Empty deps - uses ref to get current pubnub
 
   // Handle presence events
   const handlePresenceEvent = useCallback((event) => {
