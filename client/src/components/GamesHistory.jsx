@@ -22,7 +22,8 @@ async function fetchCompletedGames(pubnub, limit = 10, page = null) {
       limit: limit,
       include: {
         customFields: true,
-        statusField: true
+        statusField: true,
+        totalCount: true  // Include total count in paginated response
       },
       filter: "status == 'OVER'" // Server-side filter for finished games only
     };
