@@ -18,6 +18,8 @@ import '../styles/lobby-v2.css';
  * - Center: Game grid with cards
  */
 export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave, onViewHistory }) {
+  console.log('[LobbyV2] Component render - playerInfo:', playerInfo?.playerName, 'pubnubConfig.userId:', pubnubConfig?.userId);
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [leavingLobby, setLeavingLobby] = useState(false);
@@ -30,14 +32,17 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
   const [musicMuted, setMusicMuted] = useState(musicPlayer.isMuted);
 
   const initializedRef = useRef(false);
+  const gameListFetchedRef = useRef(false);
 
   const { isConnected, subscribe, unsubscribe, hereNow, pubnub } = usePubNub(pubnubConfig);
 
-  // Start background music when lobby loads
+  // Start background music when lobby loads and reset fetch ref on unmount
   useEffect(() => {
     musicPlayer.play();
     return () => {
       musicPlayer.stop();
+      // Reset fetch ref so game list will be fetched again when returning to lobby
+      gameListFetchedRef.current = false;
     };
   }, []);
 
@@ -194,40 +199,26 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     ));
   }, []);
 
-  // Subscribe to lobby channel - runs once on mount, waits for pubnub to be ready
+  // Subscribe to lobby channel
   useEffect(() => {
-    console.log('[LobbyV2] useEffect triggered, pubnub:', !!pubnub, 'isConnected:', isConnected);
+    console.log('[LobbyV2] useEffect triggered - isConnected:', isConnected, 'playerName:', playerInfo.playerName, 'initialized:', initializedRef.current);
 
-    // Wait for PubNub instance to be ready
-    const waitForPubNub = async () => {
-      let attempts = 0;
-      while (!pubnub && attempts < 50) {
-        console.log('[LobbyV2] Waiting for PubNub instance...', attempts);
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
+    if (!isConnected) {
+      console.log('[LobbyV2] Waiting for PubNub connection...');
+      return;
+    }
 
-      if (!pubnub) {
-        console.error('[LobbyV2] Timed out waiting for PubNub instance');
-        return null;
-      }
+    if (initializedRef.current) {
+      console.log('[LobbyV2] Already initialized, skipping');
+      return;
+    }
 
-      console.log('[LobbyV2] PubNub instance ready');
-      return true;
-    };
+    console.log('[LobbyV2] Initializing lobby subscriptions');
+    initializedRef.current = true;
 
-    // Initialize once
-    waitForPubNub().then(ready => {
-      if (!ready) return;
-      if (initializedRef.current) {
-        console.log('[LobbyV2] Already initialized, skipping');
-        return;
-      }
-
-      console.log('[LobbyV2] Initializing lobby subscriptions (one time only)');
-      initializedRef.current = true;
-
-      const unsubscribeLobby = subscribe('lobby', (event) => {
+    const unsubscribeLobby = subscribe(
+      'lobby',
+      (event) => {
         if (event.action) {
           handlePresenceEvent(event);
           return;
@@ -256,22 +247,50 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
             handleGameNameUpdated(message);
             break;
         }
-      });
+      },
+      {
+        withPresence: true,
+        presenceState: {
+          playerName: playerInfo.playerName,
+          location: getPlayerLocation()
+        }
+      }
+    );
 
-      // Fetch initial data (only once)
-      console.log('[LobbyV2] Fetching initial lobby data');
-      fetchLobbyPresence();
-      fetchGameList();
-      fetchRecentGames();
-    });
+    // Fetch initial presence data
+    console.log('[LobbyV2] Fetching initial presence');
+    fetchLobbyPresence();
 
     return () => {
       console.log('[LobbyV2] Cleanup - unsubscribing from lobby');
       initializedRef.current = false;
-      // Note: unsubscribeLobby is only available if initialization completed
+      if (unsubscribeLobby) {
+        unsubscribeLobby();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty array - run once on mount only
+  }, [isConnected, playerInfo.playerName]);
+
+  // Fetch game list and recent games when pubnub is ready - ONLY ONCE
+  useEffect(() => {
+    console.log('[LobbyV2] Game list fetch effect - pubnub exists:', !!pubnub, 'already fetched:', gameListFetchedRef.current);
+
+    if (!pubnub) {
+      console.log('[LobbyV2] No PubNub instance yet, skipping fetch');
+      return;
+    }
+
+    if (gameListFetchedRef.current) {
+      console.log('[LobbyV2] Game list ALREADY FETCHED - preventing duplicate fetch');
+      return;
+    }
+
+    console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
+    gameListFetchedRef.current = true;
+    fetchGameList();
+    fetchRecentGames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pubnub]); // Run when pubnub becomes available
 
   // Handle create game
   const handleCreateGame = async (options) => {
@@ -290,8 +309,10 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
       setShowCreateModal(false);
       onJoinGame({
         gameId: result.gameId,
+        gameName: result.gameName,
         playerId: playerInfo.playerId,
-        playerName: playerInfo.playerName
+        playerName: playerInfo.playerName,
+        isCreator: true
       });
     } catch (err) {
       setError(err.message || 'Failed to create game');
@@ -307,12 +328,14 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
 
     try {
       const location = await getPlayerLocation();
-      await joinGameApi(gameId, playerInfo.playerId, playerInfo.playerName, location);
+      const result = await joinGameApi(gameId, playerInfo.playerId, playerInfo.playerName, location);
 
       onJoinGame({
         gameId,
+        gameName: result.gameName || null,
         playerId: playerInfo.playerId,
-        playerName: playerInfo.playerName
+        playerName: playerInfo.playerName,
+        isCreator: false
       });
     } catch (err) {
       setError(err.message || 'Failed to join game');
