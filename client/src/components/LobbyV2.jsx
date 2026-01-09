@@ -149,6 +149,67 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     }
   }, []);
 
+  // Create/update User object when entering lobby (v3.0.0)
+  useEffect(() => {
+    if (!pubnubRef.current || !playerInfo?.playerId) {
+      console.log('[LobbyV2] Skipping User object creation - PubNub or playerInfo not ready');
+      return;
+    }
+
+    async function ensureUserExists() {
+      try {
+        console.log('[LobbyV2] Ensuring User object exists for', playerInfo.playerId);
+
+        // Check if user exists
+        let existingUser = null;
+        try {
+          const response = await pubnubRef.current.objects.getUUIDMetadata({
+            uuid: playerInfo.playerId,
+            include: { customFields: true }
+          });
+          existingUser = response.data;
+        } catch (err) {
+          console.log('[LobbyV2] User object does not exist, will create');
+        }
+
+        const playerLocation = getPlayerLocation();
+
+        if (!existingUser) {
+          // Create new user
+          console.log('[LobbyV2] Creating new User object');
+          await pubnubRef.current.objects.setUUIDMetadata({
+            uuid: playerInfo.playerId,
+            data: {
+              name: playerInfo.playerName,
+              custom: {
+                playerLocation: playerLocation ? JSON.stringify(playerLocation) : null
+              }
+            }
+          });
+          console.log('[LobbyV2] User object created successfully');
+        } else {
+          // Update existing user (in case name or location changed)
+          console.log('[LobbyV2] Updating existing User object');
+          await pubnubRef.current.objects.setUUIDMetadata({
+            uuid: playerInfo.playerId,
+            data: {
+              name: playerInfo.playerName,
+              custom: {
+                ...existingUser.custom,
+                playerLocation: playerLocation ? JSON.stringify(playerLocation) : null
+              }
+            }
+          });
+          console.log('[LobbyV2] User object updated successfully');
+        }
+      } catch (error) {
+        console.error('[LobbyV2] Error creating/updating User:', error);
+      }
+    }
+
+    ensureUserExists();
+  }, [playerInfo?.playerId, playerInfo?.playerName]);
+
   // Handle real-time game events
   const handleGameCreated = useCallback((message) => {
     const newGame = {
