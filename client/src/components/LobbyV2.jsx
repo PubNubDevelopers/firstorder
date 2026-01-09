@@ -277,15 +277,19 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     fetchLobbyPresence();
 
     // Fetch game list and recent games - ONLY ONCE per lobby session
-    if (!gameListFetchedRef.current && pubnubRef.current) {
-      console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
-      gameListFetchedRef.current = true;
-      fetchGameList();
-      fetchRecentGames();
-    }
+    // Use setTimeout to ensure this runs after subscription is fully established
+    const fetchTimer = setTimeout(() => {
+      if (!gameListFetchedRef.current && pubnubRef.current) {
+        console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
+        gameListFetchedRef.current = true;
+        fetchGameList();
+        fetchRecentGames();
+      }
+    }, 200);
 
     return () => {
       console.log('[LobbyV2] Cleanup - unsubscribing from lobby');
+      clearTimeout(fetchTimer);
       initializedRef.current = false;
       if (unsubscribeLobby) {
         unsubscribeLobby();
