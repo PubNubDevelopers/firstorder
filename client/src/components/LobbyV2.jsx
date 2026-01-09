@@ -276,6 +276,14 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     console.log('[LobbyV2] Fetching initial presence');
     fetchLobbyPresence();
 
+    // Fetch game list and recent games - ONLY ONCE per lobby session
+    if (!gameListFetchedRef.current && pubnubRef.current) {
+      console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
+      gameListFetchedRef.current = true;
+      fetchGameList();
+      fetchRecentGames();
+    }
+
     return () => {
       console.log('[LobbyV2] Cleanup - unsubscribing from lobby');
       initializedRef.current = false;
@@ -285,33 +293,6 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, playerInfo.playerName]);
-
-  // Fetch game list and recent games when PubNub is connected - ONLY ONCE
-  // Triggered by isConnected becoming true, uses pubnubRef for actual instance
-  useEffect(() => {
-    console.log('[LobbyV2] Game list fetch effect - isConnected:', isConnected, 'pubnubRef exists:', !!pubnubRef.current, 'already fetched:', gameListFetchedRef.current);
-
-    if (!isConnected) {
-      console.log('[LobbyV2] PubNub not connected yet, skipping fetch');
-      return;
-    }
-
-    if (gameListFetchedRef.current) {
-      console.log('[LobbyV2] Game list ALREADY FETCHED - preventing duplicate fetch');
-      return;
-    }
-
-    if (!pubnubRef.current) {
-      console.log('[LobbyV2] PubNub ref not ready yet despite isConnected=true');
-      return;
-    }
-
-    console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
-    gameListFetchedRef.current = true;
-    fetchGameList();
-    fetchRecentGames();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected]); // Run when PubNub becomes connected
 
   // Handle create game
   const handleCreateGame = async (options) => {
