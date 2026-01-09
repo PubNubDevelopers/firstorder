@@ -37,6 +37,7 @@ export default (request) => {
 /**
  * Handle MOVE_SUBMIT message
  * Validates move, updates state, checks for winner
+ * v3.0.0: Uses User objects for player game state
  */
 function handleMoveSubmit(message, gameId, request, pubnub) {
   const { playerId, order } = message;
@@ -48,99 +49,105 @@ function handleMoveSubmit(message, gameId, request, pubnub) {
     return request.ok();
   }
 
-  // Load game state from App Context
+  // 1. Load game metadata from Channel custom fields
   return pubnub.objects.getChannelMetadata({
     channel: channelId,
     include: { customFields: true }
-  }).then((response) => {
-    console.log('=== MOVE SUBMIT DEBUG ===');
+  }).then((gameResponse) => {
+    console.log('=== MOVE SUBMIT DEBUG (v3.0.0) ===');
 
-    // Parse game state from custom fields
-    if (!response.data || !response.data.custom || !response.data.custom.gameState) {
+    if (!gameResponse.data || !gameResponse.data.custom) {
       console.log('Game not found in App Context');
       return request.ok();
     }
 
-    const gameState = JSON.parse(response.data.custom.gameState);
+    const gameCustom = gameResponse.data.custom;
+    const phase = gameCustom.phase || gameResponse.data.status;
 
-    console.log('Game state phase:', gameState?.phase);
+    console.log('Game phase:', phase);
     console.log('Player ID:', playerId);
     console.log('Submitted order:', JSON.stringify(order));
 
-    // Ignore if game doesn't exist or not LIVE
-    if (!gameState || gameState.phase !== 'LIVE') {
+    // Ignore if game not LIVE
+    if (phase !== 'LIVE') {
       console.log('Game not in LIVE state - aborting');
       return request.ok();
     }
 
-    // Verify player is in roster
-    if (!gameState.playerIds.includes(playerId)) {
-      console.log('Player not in roster - aborting');
-      return request.ok();
-    }
+    // Parse goalOrder from custom field
+    const goalOrder = JSON.parse(gameCustom.goalOrder);
+    console.log('Goal order:', JSON.stringify(goalOrder));
 
-    // Get player state from game object
-    const playerState = gameState.players[playerId];
-    if (!playerState) {
-      console.log('Player state not found - aborting');
-      return request.ok();
-    }
+    // 2. Get player game state from User object
+    return pubnub.objects.getUUIDMetadata({
+      uuid: playerId,
+      include: { customFields: true }
+    }).then((playerResponse) => {
+      if (!playerResponse.data || !playerResponse.data.custom) {
+        console.log('Player not found - aborting');
+        return request.ok();
+      }
 
-    console.log('Goal order:', JSON.stringify(gameState.goalOrder));
+      const playerCustom = playerResponse.data.custom;
+      const prefix = `game_${gameId}_`;
 
-    // Update player state
-    playerState.currentOrder = order;
-    playerState.moveCount += 1;
+      // Extract player game state
+      const currentMoveCount = playerCustom[`${prefix}moveCount`] || 0;
+      const correctnessHistory = JSON.parse(playerCustom[`${prefix}correctnessHistory`] || '[]');
 
-    // Calculate positions correct
-    const positionsCorrect = calculatePositionsCorrect(order, gameState.goalOrder);
-    console.log('Positions correct:', positionsCorrect);
+      // Calculate positions correct
+      const positionsCorrect = calculatePositionsCorrect(order, goalOrder);
+      console.log('Positions correct:', positionsCorrect);
 
-    playerState.positionsCorrect = positionsCorrect;
-    playerState.correctnessHistory.push(positionsCorrect);
+      // Update player game state
+      const newMoveCount = currentMoveCount + 1;
+      correctnessHistory.push(positionsCorrect);
 
-    const moveTT = Date.now().toString();
+      const moveTT = Date.now().toString();
 
-    // Save game state to App Context
-    return pubnub.objects.setChannelMetadata({
-      channel: channelId,
-      data: {
-        name: gameState.gameName || `Game ${gameId}`,
-        description: `First Order game - Status: ${gameState.phase}`,
-        status: gameState.phase, // Use basic status field for filtering
-        custom: {
-          gameState: JSON.stringify(gameState),
-          playerCount: gameState.playerIds.length,
-          createdAt: gameState.createdAt
+      // 3. Save updated player game state to User object
+      const updatedFields = {};
+      updatedFields[`${prefix}moveCount`] = newMoveCount;
+      updatedFields[`${prefix}positionsCorrect`] = positionsCorrect;
+      updatedFields[`${prefix}currentOrder`] = JSON.stringify(order);
+      updatedFields[`${prefix}correctnessHistory`] = JSON.stringify(correctnessHistory);
+
+      return pubnub.objects.setUUIDMetadata({
+        uuid: playerId,
+        data: {
+          custom: {
+            ...playerCustom,
+            ...updatedFields
+          }
         }
-      }
-    }).then(() => {
-      // Check for winner - all positions must be correct
-      const tileCount = Object.keys(gameState.goalOrder).length;
-      if (positionsCorrect === tileCount) {
-        // Handle win (publishes PROGRESS_UPDATE and GAME_OVER)
-        return handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, request);
-      }
-
-      // Publish PROGRESS_UPDATE to game channel
-      const progressMessage = {
-        v: 1,
-        type: 'PROGRESS_UPDATE',
-        gameId: gameId,
-        playerId: playerId,
-        moveCount: playerState.moveCount,
-        positionsCorrect: positionsCorrect,
-        moveTT: moveTT
-      };
-      console.log('Publishing PROGRESS_UPDATE:', JSON.stringify(progressMessage));
-
-      return pubnub.publish({
-        channel: `game.${gameId}`,
-        message: progressMessage
       }).then(() => {
-        console.log('PROGRESS_UPDATE published successfully');
-        // Abort the original MOVE_SUBMIT (we've published PROGRESS_UPDATE instead)
-        return request.abort();
+        // Check for winner - all positions must be correct
+        const tileCount = Object.keys(goalOrder).length;
+        if (positionsCorrect === tileCount) {
+          // Handle win
+          return handleWin(gameId, playerId, moveTT, newMoveCount, positionsCorrect, gameCustom, pubnub, request);
+        }
+
+        // Publish PROGRESS_UPDATE to game channel
+        const progressMessage = {
+          v: 1,
+          type: 'PROGRESS_UPDATE',
+          gameId: gameId,
+          playerId: playerId,
+          moveCount: newMoveCount,
+          positionsCorrect: positionsCorrect,
+          moveTT: moveTT
+        };
+        console.log('Publishing PROGRESS_UPDATE:', JSON.stringify(progressMessage));
+
+        return pubnub.publish({
+          channel: `game.${gameId}`,
+          message: progressMessage
+        }).then(() => {
+          console.log('PROGRESS_UPDATE published successfully');
+          // Abort the original MOVE_SUBMIT
+          return request.abort();
+        });
       });
     });
   }).catch((error) => {
@@ -152,120 +159,197 @@ function handleMoveSubmit(message, gameId, request, pubnub) {
 /**
  * Handle win condition
  * Track placement and publish PLAYER_FINISHED, optionally GAME_OVER
+ * v3.0.0: Updates User object fields and Channel metadata
  */
-function handleWin(gameId, playerId, moveTT, playerState, gameState, pubnub, request) {
+function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCustom, pubnub, request) {
   const channelId = `game.${gameId}`;
+  const prefix = `game_${gameId}_`;
 
-  // Update player finished status
-  gameState.players[playerId].finished = true;
-  gameState.players[playerId].finishTT = moveTT;
+  // 1. Get player name from User object
+  return pubnub.objects.getUUIDMetadata({
+    uuid: playerId
+  }).then((playerResponse) => {
+    const playerName = playerResponse.data.name || `Player ${playerId.slice(-4)}`;
 
-  // Initialize placements array if not exists
-  if (!gameState.placements) {
-    gameState.placements = [];
-  }
+    // 2. Query Channel members to count finished players
+    return pubnub.objects.getChannelMembers({
+      channel: channelId,
+      include: { UUIDFields: true, customFields: true }
+    }).then((membersResponse) => {
+      const members = membersResponse.data || [];
 
-  // Calculate current placement (1-indexed)
-  const currentPlacement = gameState.placements.length + 1;
+      // Get all finished players from User objects
+      const finishedPromises = members.map(member => {
+        return pubnub.objects.getUUIDMetadata({
+          uuid: member.uuid.id,
+          include: { customFields: true }
+        }).then(userResp => {
+          const custom = userResp.data.custom || {};
+          return {
+            uuid: member.uuid.id,
+            name: userResp.data.name,
+            finished: custom[`${prefix}finished`] || false,
+            placement: custom[`${prefix}placement`] || null,
+            finishTT: custom[`${prefix}finishTT`] || null,
+            moveCount: custom[`${prefix}moveCount`] || 0
+          };
+        });
+      });
 
-  // Add to placements array with full completion details
-  gameState.placements.push({
-    playerId: playerId,
-    playerName: gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`,
-    finishTT: moveTT,
-    moveCount: playerState.moveCount,
-    placement: currentPlacement
-  });
+      return Promise.all(finishedPromises).then(playerStates => {
+        // Calculate current placement (count existing finished players + 1)
+        const finishedPlayers = playerStates.filter(p => p.finished);
+        const currentPlacement = finishedPlayers.length + 1;
 
-  // Set first-place winner for backward compatibility
-  if (!gameState.winnerPlayerId) {
-    gameState.winnerPlayerId = playerId;
-    gameState.winnerName = gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`;
-    gameState.winTT = moveTT;
-  }
+        console.log('Player finishing - placement:', currentPlacement);
 
-  // Calculate effective placement count (may be reduced if players left)
-  const activePlayers = gameState.playerIds.length;
-  const effectivePlacementCount = Math.min(gameState.placementCount || 1, activePlayers);
+        // 3. Update this player's User object with finished status
+        return pubnub.objects.getUUIDMetadata({
+          uuid: playerId,
+          include: { customFields: true }
+        }).then(userResp => {
+          const playerCustom = userResp.data.custom || {};
+          const updatedFields = {};
+          updatedFields[`${prefix}finished`] = true;
+          updatedFields[`${prefix}finishTT`] = moveTT;
+          updatedFields[`${prefix}placement`] = currentPlacement;
 
-  // Check if all placements filled
-  const allPlacementsFilled = gameState.placements.length >= effectivePlacementCount;
+          return pubnub.objects.setUUIDMetadata({
+            uuid: playerId,
+            data: {
+              custom: {
+                ...playerCustom,
+                ...updatedFields
+              }
+            }
+          });
+        }).then(() => {
+          // 4. Check if this is first-place winner (update Channel metadata)
+          const isFirstPlace = currentPlacement === 1;
+          let updateChannelPromise = Promise.resolve();
 
-  // Only mark game as OVER if all placements filled
-  if (allPlacementsFilled) {
-    gameState.phase = 'OVER';
-    gameState.endTT = Date.now().toString();
-    gameState.lockedTT = gameState.endTT; // Keep for backward compatibility
-  }
+          if (isFirstPlace) {
+            updateChannelPromise = pubnub.objects.setChannelMetadata({
+              channel: channelId,
+              data: {
+                custom: {
+                  ...gameCustom,
+                  winnerPlayerId: playerId,
+                  winnerName: playerName,
+                  winTT: moveTT
+                }
+              }
+            });
+          }
 
-  // Save game state to App Context
-  return pubnub.objects.setChannelMetadata({
-    channel: channelId,
-    data: {
-      name: gameState.gameName || `Game ${gameId}`,
-      description: `First Order game - Status: ${gameState.phase}`,
-      status: gameState.phase,
-      custom: {
-        gameState: JSON.stringify(gameState),
-        playerCount: gameState.playerIds.length,
-        createdAt: gameState.createdAt
-      }
-    }
-  }).then(() => {
-    // First publish PROGRESS_UPDATE (so client sees 4/4)
-    return pubnub.publish({
-      channel: `game.${gameId}`,
-      message: {
-        v: 1,
-        type: 'PROGRESS_UPDATE',
-        gameId: gameId,
-        playerId: playerId,
-        moveCount: playerState.moveCount,
-        positionsCorrect: playerState.positionsCorrect,
-        moveTT: moveTT
-      }
-    }).then(() => {
-      // Publish PLAYER_FINISHED message to admin channel
-      return pubnub.publish({
-        channel: `admin.${gameId}`,
-        message: {
-          v: 1,
-          type: 'PLAYER_FINISHED',
-          gameId: gameId,
-          playerId: playerId,
-          playerName: gameState.playerNames[playerId] || `Player ${playerId.slice(-4)}`,
-          placement: currentPlacement,
-          moveCount: playerState.moveCount,
-          finishTT: moveTT,
-          placements: gameState.placements,
-          allPlacementsFilled: allPlacementsFilled
-        }
+          return updateChannelPromise.then(() => {
+            // 5. Check if all placements filled
+            const placementCount = gameCustom.placementCount || 1;
+            const allPlacementsFilled = (finishedPlayers.length + 1) >= placementCount;
+
+            console.log('Placements filled:', finishedPlayers.length + 1, '/', placementCount);
+
+            // 6. If all placements filled, mark game as OVER
+            let gameOverPromise = Promise.resolve();
+            if (allPlacementsFilled) {
+              const endTT = Date.now().toString();
+              gameOverPromise = pubnub.objects.setChannelMetadata({
+                channel: channelId,
+                data: {
+                  status: 'OVER',
+                  custom: {
+                    ...gameCustom,
+                    phase: 'OVER',
+                    endTT: endTT,
+                    lockedTT: endTT,
+                    winnerPlayerId: isFirstPlace ? playerId : gameCustom.winnerPlayerId,
+                    winnerName: isFirstPlace ? playerName : gameCustom.winnerName,
+                    winTT: isFirstPlace ? moveTT : gameCustom.winTT
+                  }
+                }
+              });
+            }
+
+            return gameOverPromise.then(() => {
+              // 7. Publish PROGRESS_UPDATE first
+              return pubnub.publish({
+                channel: `game.${gameId}`,
+                message: {
+                  v: 1,
+                  type: 'PROGRESS_UPDATE',
+                  gameId: gameId,
+                  playerId: playerId,
+                  moveCount: moveCount,
+                  positionsCorrect: positionsCorrect,
+                  moveTT: moveTT
+                }
+              }).then(() => {
+                // 8. Build placements array from User objects
+                const placements = [...finishedPlayers, {
+                  uuid: playerId,
+                  name: playerName,
+                  finished: true,
+                  placement: currentPlacement,
+                  finishTT: moveTT,
+                  moveCount: moveCount
+                }].sort((a, b) => a.placement - b.placement).map(p => ({
+                  playerId: p.uuid,
+                  playerName: p.name,
+                  placement: p.placement,
+                  finishTT: p.finishTT,
+                  moveCount: p.moveCount
+                }));
+
+                // 9. Publish PLAYER_FINISHED
+                return pubnub.publish({
+                  channel: `admin.${gameId}`,
+                  message: {
+                    v: 1,
+                    type: 'PLAYER_FINISHED',
+                    gameId: gameId,
+                    playerId: playerId,
+                    playerName: playerName,
+                    placement: currentPlacement,
+                    moveCount: moveCount,
+                    finishTT: moveTT,
+                    placements: placements,
+                    allPlacementsFilled: allPlacementsFilled
+                  }
+                }).then(() => {
+                  // 10. If all placements filled, publish GAME_OVER
+                  if (allPlacementsFilled) {
+                    const goalOrder = JSON.parse(gameCustom.goalOrder);
+                    return pubnub.publish({
+                      channel: `admin.${gameId}`,
+                      message: {
+                        v: 1,
+                        type: 'GAME_OVER',
+                        gameId: gameId,
+                        phase: 'OVER',
+                        placements: placements,
+                        goalOrder: goalOrder,
+                        endTT: gameCustom.endTT,
+                        // Backward compatibility
+                        winnerPlayerId: isFirstPlace ? playerId : gameCustom.winnerPlayerId,
+                        winnerName: isFirstPlace ? playerName : gameCustom.winnerName,
+                        winTT: isFirstPlace ? moveTT : gameCustom.winTT
+                      }
+                    });
+                  }
+                });
+              });
+            });
+          });
+        });
       });
     }).then(() => {
-      // If all placements filled, publish GAME_OVER
-      if (allPlacementsFilled) {
-        return pubnub.publish({
-          channel: `admin.${gameId}`,
-          message: {
-            v: 1,
-            type: 'GAME_OVER',
-            gameId: gameId,
-            phase: 'OVER',
-            placements: gameState.placements,
-            goalOrder: gameState.goalOrder,
-            endTT: gameState.endTT,
-            // Backward compatibility
-            winnerPlayerId: gameState.winnerPlayerId,
-            winnerName: gameState.winnerName,
-            winTT: gameState.winTT
-          }
-        });
-      }
-    }).then(() => {
-      console.log('Player finished - placement:', currentPlacement, 'all filled:', allPlacementsFilled);
+      console.log('Player finished successfully');
       // Abort the original MOVE_SUBMIT message
       return request.abort();
     });
+  }).catch(error => {
+    console.error('Error handling win:', error);
+    return request.ok();
   });
 }
 
