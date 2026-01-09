@@ -33,10 +33,10 @@ This is a major architectural refactor that **breaks backward compatibility** wi
   - Each game property (tileCount, emojiTheme, etc.) as separate field
   - Improved queryability and performance
 
-- **Per-Player Game State in User Objects**: Player game progress stored in User custom fields
-  - Field naming pattern: `game_{gameId}_{field}`
+- **Per-Player Game State in Memberships**: Player game progress stored in Membership custom fields
   - Tracks moveCount, positionsCorrect, finished, placement, etc.
-  - Cleaner separation between game config and player progress
+  - Cleaner separation: User = profile, Membership = game participation
+  - Automatic cleanup when player leaves (Membership removed)
 
 ### Changed
 
@@ -47,13 +47,14 @@ This is a major architectural refactor that **breaks backward compatibility** wi
 
 - **Backend Game Operations** (`netlify/functions/game.js`)
   - All operations updated to use User objects and Memberships
-  - Create/Join/Start/Leave operations create/update User objects
-  - Game state reconstruction from Channel + User data
+  - Create/Join operations initialize Membership custom fields with game state
+  - Start/Leave operations update Membership custom fields
+  - Game state reconstruction from Channel + Membership data
 
 - **PubNub Function** (`server/before-publish-function.js`)
-  - Move validation now reads from User custom fields
-  - Updates player game state directly in User objects
-  - Win detection updates User placement/finishTT fields
+  - Move validation now reads from Membership custom fields
+  - Updates player game state directly in Membership custom fields
+  - Win detection updates Membership placement/finishTT fields
 
 - **Client Game Listing** (`client/src/utils/gameApi.js`)
   - `listGames()` now queries Channel members for player counts
@@ -84,32 +85,35 @@ This is a major architectural refactor that **breaks backward compatibility** wi
 }
 ```
 
-**User Metadata Structure (Player Profile + Game State):**
+**User Metadata Structure (Player Profile Only):**
 ```javascript
 {
   id: "player-{uuid}",
   name: "Player Name",
   custom: {
-    playerLocation: "{...JSON...}",
-    game_{gameId}_moveCount: 5,
-    game_{gameId}_positionsCorrect: 3,
-    game_{gameId}_finished: false,
-    game_{gameId}_placement: null,
-    game_{gameId}_finishTT: null,
-    game_{gameId}_currentOrder: "{...JSON...}",
-    game_{gameId}_correctnessHistory: "[...]"
+    playerLocation: "{...JSON...}"
   }
 }
 ```
 
-**Membership Relationship:**
+**Membership Relationship (Player-Game + Per-Game State):**
 ```javascript
-// User → Game membership with role
+// User → Game membership with role and game state
 {
   uuid: "player-{uuid}",
   channels: [{
     id: "game.{gameId}",
-    custom: { role: "host" | "player", joinedAt: timestamp }
+    custom: {
+      role: "host" | "player",
+      joinedAt: timestamp,
+      moveCount: 5,
+      positionsCorrect: 3,
+      finished: false,
+      placement: null,
+      finishTT: null,
+      currentOrder: "{...JSON...}",
+      correctnessHistory: "[...]"
+    }
   }]
 }
 ```
@@ -123,9 +127,9 @@ This is a major architectural refactor that **breaks backward compatibility** wi
 
 ### Known Issues
 
-- User objects accumulate per-game fields (7 fields per game played)
-- More API calls required for `getGame()` (Channel + Members + Users)
-- Cleanup required when player leaves game
+- More API calls required for `getGame()` (Channel + Members with custom fields)
+- Membership queries need filtering by channel for player game state
+- Must query members with `include: { customFields: true }` to get game state
 
 ---
 
