@@ -228,11 +228,8 @@ async function createGame(pubnub, body) {
 
     await storage.setGameMetadata(pubnub, gameId, gameMetadata);
 
-    // 3. Add player as member (host role)
-    await storage.addPlayerToGame(pubnub, playerId, gameId, 'host');
-
-    // 4. Initialize player game state in User object
-    await storage.setPlayerGameState(pubnub, playerId, gameId, {
+    // 3. Add player as member (host role) with initial game state
+    await storage.addPlayerToGame(pubnub, playerId, gameId, 'host', {
       moveCount: 0,
       positionsCorrect: 0,
       finished: false,
@@ -359,11 +356,8 @@ async function joinGame(pubnub, body) {
       });
     }
 
-    // 7. Add player as member
-    await storage.addPlayerToGame(pubnub, playerId, gameId, 'player');
-
-    // 8. Initialize player game state
-    await storage.setPlayerGameState(pubnub, playerId, gameId, {
+    // 7. Add player as member with initial game state
+    await storage.addPlayerToGame(pubnub, playerId, gameId, 'player', {
       moveCount: 0,
       positionsCorrect: 0,
       finished: false,
