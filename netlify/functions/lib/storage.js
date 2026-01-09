@@ -3,13 +3,13 @@
  *
  * Architecture:
  * - Channel Metadata: Game-level configuration (tileCount, emojiTheme, tiles, etc.)
- * - User Metadata: Player profiles + per-game state (moveCount, currentOrder, etc.)
- * - Memberships: Track which players belong to which games
+ * - User Metadata: Player profiles only (name, playerLocation)
+ * - Memberships: Player-game relationships + per-player game state (moveCount, currentOrder, etc.)
  *
  * Breaking change from v2.x:
  * - No more monolithic gameState JSON blob
  * - Individual custom fields for each game property
- * - Player data stored in User objects, not Channel metadata
+ * - Per-player game data stored in Membership custom fields, not User objects
  */
 
 /**
@@ -40,34 +40,36 @@ function gameToChannelFields(gameData) {
 }
 
 /**
- * Helper: Convert per-player game state to User custom field keys
+ * Helper: Convert per-player game state to Membership custom fields
  */
-function playerGameStateToUserFields(gameId, playerGameState) {
-  const prefix = `game_${gameId}_`;
+function playerGameStateToMembershipFields(playerGameState) {
   return {
-    [`${prefix}moveCount`]: playerGameState.moveCount || 0,
-    [`${prefix}positionsCorrect`]: playerGameState.positionsCorrect || 0,
-    [`${prefix}finished`]: playerGameState.finished || false,
-    [`${prefix}finishTT`]: playerGameState.finishTT || null,
-    [`${prefix}placement`]: playerGameState.placement || null,
-    [`${prefix}currentOrder`]: playerGameState.currentOrder ? JSON.stringify(playerGameState.currentOrder) : null,
-    [`${prefix}correctnessHistory`]: JSON.stringify(playerGameState.correctnessHistory || [])
+    role: playerGameState.role || 'player',
+    joinedAt: playerGameState.joinedAt || Date.now(),
+    moveCount: playerGameState.moveCount || 0,
+    positionsCorrect: playerGameState.positionsCorrect || 0,
+    finished: playerGameState.finished || false,
+    finishTT: playerGameState.finishTT || null,
+    placement: playerGameState.placement || null,
+    currentOrder: playerGameState.currentOrder ? JSON.stringify(playerGameState.currentOrder) : null,
+    correctnessHistory: JSON.stringify(playerGameState.correctnessHistory || [])
   };
 }
 
 /**
- * Helper: Extract player game state from User custom fields
+ * Helper: Extract player game state from Membership custom fields
  */
-function userFieldsToPlayerGameState(gameId, userCustom) {
-  const prefix = `game_${gameId}_`;
+function membershipFieldsToPlayerGameState(membershipCustom) {
   return {
-    moveCount: userCustom[`${prefix}moveCount`] || 0,
-    positionsCorrect: userCustom[`${prefix}positionsCorrect`] || 0,
-    finished: userCustom[`${prefix}finished`] || false,
-    finishTT: userCustom[`${prefix}finishTT`] || null,
-    placement: userCustom[`${prefix}placement`] || null,
-    currentOrder: userCustom[`${prefix}currentOrder`] ? JSON.parse(userCustom[`${prefix}currentOrder`]) : null,
-    correctnessHistory: JSON.parse(userCustom[`${prefix}correctnessHistory`] || '[]')
+    role: membershipCustom.role || 'player',
+    joinedAt: membershipCustom.joinedAt,
+    moveCount: membershipCustom.moveCount || 0,
+    positionsCorrect: membershipCustom.positionsCorrect || 0,
+    finished: membershipCustom.finished || false,
+    finishTT: membershipCustom.finishTT || null,
+    placement: membershipCustom.placement || null,
+    currentOrder: membershipCustom.currentOrder ? JSON.parse(membershipCustom.currentOrder) : null,
+    correctnessHistory: JSON.parse(membershipCustom.correctnessHistory || '[]')
   };
 }
 
@@ -233,25 +235,35 @@ async function getGamePlayers(pubnub, gameId) {
 }
 
 /**
- * Add player to game (create Membership)
+ * Add player to game (create Membership with initial game state)
  * @param {PubNub} pubnub - PubNub instance
  * @param {string} playerId - Player ID (UUID)
  * @param {string} gameId - Game ID
  * @param {string} role - Player role ('host' | 'player')
+ * @param {Object} initialGameState - Initial player game state (optional)
  * @returns {Promise<void>}
  */
-async function addPlayerToGame(pubnub, playerId, gameId, role = 'player') {
+async function addPlayerToGame(pubnub, playerId, gameId, role = 'player', initialGameState = {}) {
   try {
     const channelId = `game.${gameId}`;
+
+    const membershipCustom = playerGameStateToMembershipFields({
+      role,
+      joinedAt: Date.now(),
+      moveCount: initialGameState.moveCount || 0,
+      positionsCorrect: initialGameState.positionsCorrect || 0,
+      finished: initialGameState.finished || false,
+      finishTT: initialGameState.finishTT || null,
+      placement: initialGameState.placement || null,
+      currentOrder: initialGameState.currentOrder || null,
+      correctnessHistory: initialGameState.correctnessHistory || []
+    });
 
     await pubnub.objects.setMemberships({
       uuid: playerId,
       channels: [{
         id: channelId,
-        custom: {
-          role: role,
-          joinedAt: Date.now()
-        }
+        custom: membershipCustom
       }]
     });
   } catch (error) {
@@ -282,7 +294,7 @@ async function removePlayerFromGame(pubnub, playerId, gameId) {
 }
 
 /**
- * Get player's game-specific state from User custom fields
+ * Get player's game-specific state from Membership custom fields
  * @param {PubNub} pubnub - PubNub instance
  * @param {string} playerId - Player ID (UUID)
  * @param {string} gameId - Game ID
@@ -290,10 +302,19 @@ async function removePlayerFromGame(pubnub, playerId, gameId) {
  */
 async function getPlayerGameState(pubnub, playerId, gameId) {
   try {
-    const user = await getPlayer(pubnub, playerId);
-    if (!user || !user.custom) {
-      // Return default state if user doesn't exist
+    const channelId = `game.${gameId}`;
+
+    const response = await pubnub.objects.getMemberships({
+      uuid: playerId,
+      include: { customFields: true },
+      filter: `channel.id == '${channelId}'`
+    });
+
+    if (!response.data || response.data.length === 0) {
+      // Return default state if membership doesn't exist
       return {
+        role: 'player',
+        joinedAt: null,
         moveCount: 0,
         positionsCorrect: 0,
         finished: false,
@@ -304,7 +325,8 @@ async function getPlayerGameState(pubnub, playerId, gameId) {
       };
     }
 
-    return userFieldsToPlayerGameState(gameId, user.custom);
+    const membership = response.data[0];
+    return membershipFieldsToPlayerGameState(membership.custom || {});
   } catch (error) {
     console.error('[storage.getPlayerGameState] Error:', error);
     throw error;
@@ -312,7 +334,7 @@ async function getPlayerGameState(pubnub, playerId, gameId) {
 }
 
 /**
- * Set/update player's game-specific state in User custom fields
+ * Set/update player's game-specific state in Membership custom fields
  * @param {PubNub} pubnub - PubNub instance
  * @param {string} playerId - Player ID (UUID)
  * @param {string} gameId - Game ID
@@ -321,24 +343,26 @@ async function getPlayerGameState(pubnub, playerId, gameId) {
  */
 async function setPlayerGameState(pubnub, playerId, gameId, gameState) {
   try {
-    // Get existing user data
-    const user = await getPlayer(pubnub, playerId);
-    const existingCustom = user?.custom || {};
+    const channelId = `game.${gameId}`;
 
-    // Merge game state fields into custom
-    const gameFields = playerGameStateToUserFields(gameId, gameState);
-    const updatedCustom = {
-      ...existingCustom,
-      ...gameFields
+    // Get existing membership to preserve role/joinedAt
+    const existing = await getPlayerGameState(pubnub, playerId, gameId);
+
+    // Merge new game state with existing
+    const updatedState = {
+      role: existing.role || gameState.role || 'player',
+      joinedAt: existing.joinedAt || gameState.joinedAt || Date.now(),
+      ...gameState
     };
 
-    // Update user metadata
-    await pubnub.objects.setUUIDMetadata({
+    const membershipCustom = playerGameStateToMembershipFields(updatedState);
+
+    await pubnub.objects.setMemberships({
       uuid: playerId,
-      data: {
-        name: user?.name || playerId,
-        custom: updatedCustom
-      }
+      channels: [{
+        id: channelId,
+        custom: membershipCustom
+      }]
     });
   } catch (error) {
     console.error('[storage.setPlayerGameState] Error:', error);
@@ -347,41 +371,18 @@ async function setPlayerGameState(pubnub, playerId, gameId, gameState) {
 }
 
 /**
- * Delete player's game-specific state from User custom fields
+ * Delete player's game-specific state (handled by removePlayerFromGame)
+ * This function is a no-op since removing the Membership removes all data
  * @param {PubNub} pubnub - PubNub instance
  * @param {string} playerId - Player ID (UUID)
  * @param {string} gameId - Game ID
  * @returns {Promise<void>}
  */
 async function deletePlayerGameState(pubnub, playerId, gameId) {
-  try {
-    const user = await getPlayer(pubnub, playerId);
-    if (!user || !user.custom) {
-      return; // Nothing to delete
-    }
-
-    // Remove all game-specific fields
-    const prefix = `game_${gameId}_`;
-    const updatedCustom = {};
-
-    for (const [key, value] of Object.entries(user.custom)) {
-      if (!key.startsWith(prefix)) {
-        updatedCustom[key] = value;
-      }
-    }
-
-    // Update user metadata without game fields
-    await pubnub.objects.setUUIDMetadata({
-      uuid: playerId,
-      data: {
-        name: user.name,
-        custom: updatedCustom
-      }
-    });
-  } catch (error) {
-    console.error('[storage.deletePlayerGameState] Error:', error);
-    throw error;
-  }
+  // Player game state is in Membership custom fields
+  // It's automatically deleted when Membership is removed
+  // This is a no-op for API compatibility
+  return;
 }
 
 /**
