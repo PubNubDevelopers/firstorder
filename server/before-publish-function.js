@@ -219,8 +219,7 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
             id: channelId,
             custom: updatedMembershipCustom
           }]
-        });
-      }).then(() => {
+        }).then(() => {
           // 4. Check if this is first-place winner (update Channel metadata)
           const isFirstPlace = currentPlacement === 1;
           let updateChannelPromise = Promise.resolve();
@@ -333,15 +332,15 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
                       }
                     });
                   }
+                }).then(() => {
+                  console.log('Player finished successfully');
+                  // Abort the original MOVE_SUBMIT message
+                  return request.abort();
                 });
               });
             });
           });
         });
-      }).then(() => {
-        console.log('Player finished successfully');
-        // Abort the original MOVE_SUBMIT message
-        return request.abort();
       });
     });
   }).catch(error => {
