@@ -305,7 +305,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     fetchGameList();
     fetchRecentGames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchGameList, fetchRecentGames]); // Run when fetch functions are available (stable with empty deps)
+  }, [pubnub, fetchGameList, fetchRecentGames]); // Run when pubnub becomes available
 
   // Handle create game
   const handleCreateGame = async (options) => {
