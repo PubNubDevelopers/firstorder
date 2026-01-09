@@ -247,9 +247,9 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
             console.log('Placements filled:', finishedPlayers.length + 1, '/', placementCount);
 
             // 6. If all placements filled, mark game as OVER
+            const endTT = Date.now().toString();
             let gameOverPromise = Promise.resolve();
             if (allPlacementsFilled) {
-              const endTT = Date.now().toString();
               gameOverPromise = pubnub.objects.setChannelMetadata({
                 channel: channelId,
                 data: {
@@ -325,7 +325,7 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
                         phase: 'OVER',
                         placements: placements,
                         goalOrder: goalOrder,
-                        endTT: gameCustom.endTT,
+                        endTT: endTT,
                         // Backward compatibility
                         winnerPlayerId: isFirstPlace ? playerId : gameCustom.winnerPlayerId,
                         winnerName: isFirstPlace ? playerName : gameCustom.winnerName,
