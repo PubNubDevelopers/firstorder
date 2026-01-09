@@ -78,22 +78,23 @@ function handleMoveSubmit(message, gameId, request, pubnub) {
     const goalOrder = JSON.parse(gameCustom.goalOrder);
     console.log('Goal order:', JSON.stringify(goalOrder));
 
-    // 2. Get player game state from User object
-    return pubnub.objects.getUUIDMetadata({
+    // 2. Get player game state from Membership custom fields
+    return pubnub.objects.getMemberships({
       uuid: playerId,
-      include: { customFields: true }
-    }).then((playerResponse) => {
-      if (!playerResponse.data || !playerResponse.data.custom) {
-        console.log('Player not found - aborting');
+      include: { customFields: true },
+      filter: `channel.id == '${channelId}'`
+    }).then((membershipResponse) => {
+      if (!membershipResponse.data || membershipResponse.data.length === 0) {
+        console.log('Player membership not found - aborting');
         return request.ok();
       }
 
-      const playerCustom = playerResponse.data.custom;
-      const prefix = `game_${gameId}_`;
+      const membership = membershipResponse.data[0];
+      const membershipCustom = membership.custom || {};
 
-      // Extract player game state
-      const currentMoveCount = playerCustom[`${prefix}moveCount`] || 0;
-      const correctnessHistory = JSON.parse(playerCustom[`${prefix}correctnessHistory`] || '[]');
+      // Extract player game state from Membership
+      const currentMoveCount = membershipCustom.moveCount || 0;
+      const correctnessHistory = JSON.parse(membershipCustom.correctnessHistory || '[]');
 
       // Calculate positions correct
       const positionsCorrect = calculatePositionsCorrect(order, goalOrder);
@@ -105,21 +106,21 @@ function handleMoveSubmit(message, gameId, request, pubnub) {
 
       const moveTT = Date.now().toString();
 
-      // 3. Save updated player game state to User object
-      const updatedFields = {};
-      updatedFields[`${prefix}moveCount`] = newMoveCount;
-      updatedFields[`${prefix}positionsCorrect`] = positionsCorrect;
-      updatedFields[`${prefix}currentOrder`] = JSON.stringify(order);
-      updatedFields[`${prefix}correctnessHistory`] = JSON.stringify(correctnessHistory);
+      // 3. Save updated player game state to Membership custom fields
+      const updatedMembershipCustom = {
+        ...membershipCustom,
+        moveCount: newMoveCount,
+        positionsCorrect: positionsCorrect,
+        currentOrder: JSON.stringify(order),
+        correctnessHistory: JSON.stringify(correctnessHistory)
+      };
 
-      return pubnub.objects.setUUIDMetadata({
+      return pubnub.objects.setMemberships({
         uuid: playerId,
-        data: {
-          custom: {
-            ...playerCustom,
-            ...updatedFields
-          }
-        }
+        channels: [{
+          id: channelId,
+          custom: updatedMembershipCustom
+        }]
       }).then(() => {
         // Check for winner - all positions must be correct
         const tileCount = Object.keys(goalOrder).length;
@@ -163,7 +164,6 @@ function handleMoveSubmit(message, gameId, request, pubnub) {
  */
 function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCustom, pubnub, request) {
   const channelId = `game.${gameId}`;
-  const prefix = `game_${gameId}_`;
 
   // 1. Get player name from User object
   return pubnub.objects.getUUIDMetadata({
@@ -171,59 +171,56 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
   }).then((playerResponse) => {
     const playerName = playerResponse.data.name || `Player ${playerId.slice(-4)}`;
 
-    // 2. Query Channel members to count finished players
+    // 2. Query Channel members to get finished players from Membership custom fields
     return pubnub.objects.getChannelMembers({
       channel: channelId,
       include: { UUIDFields: true, customFields: true }
     }).then((membersResponse) => {
       const members = membersResponse.data || [];
 
-      // Get all finished players from User objects
-      const finishedPromises = members.map(member => {
-        return pubnub.objects.getUUIDMetadata({
+      // Extract finished players from Membership custom fields
+      const playerStates = members.map(member => {
+        const membershipCustom = member.custom || {};
+        return {
           uuid: member.uuid.id,
-          include: { customFields: true }
-        }).then(userResp => {
-          const custom = userResp.data.custom || {};
-          return {
-            uuid: member.uuid.id,
-            name: userResp.data.name,
-            finished: custom[`${prefix}finished`] || false,
-            placement: custom[`${prefix}placement`] || null,
-            finishTT: custom[`${prefix}finishTT`] || null,
-            moveCount: custom[`${prefix}moveCount`] || 0
-          };
-        });
+          name: member.uuid.name,
+          finished: membershipCustom.finished || false,
+          placement: membershipCustom.placement || null,
+          finishTT: membershipCustom.finishTT || null,
+          moveCount: membershipCustom.moveCount || 0
+        };
       });
 
-      return Promise.all(finishedPromises).then(playerStates => {
-        // Calculate current placement (count existing finished players + 1)
-        const finishedPlayers = playerStates.filter(p => p.finished);
-        const currentPlacement = finishedPlayers.length + 1;
+      // Calculate current placement (count existing finished players + 1)
+      const finishedPlayers = playerStates.filter(p => p.finished);
+      const currentPlacement = finishedPlayers.length + 1;
 
-        console.log('Player finishing - placement:', currentPlacement);
+      console.log('Player finishing - placement:', currentPlacement);
 
-        // 3. Update this player's User object with finished status
-        return pubnub.objects.getUUIDMetadata({
+      // 3. Update this player's Membership with finished status
+      return pubnub.objects.getMemberships({
+        uuid: playerId,
+        include: { customFields: true },
+        filter: `channel.id == '${channelId}'`
+      }).then(membershipResp => {
+        const membership = membershipResp.data[0];
+        const membershipCustom = membership.custom || {};
+
+        const updatedMembershipCustom = {
+          ...membershipCustom,
+          finished: true,
+          finishTT: moveTT,
+          placement: currentPlacement
+        };
+
+        return pubnub.objects.setMemberships({
           uuid: playerId,
-          include: { customFields: true }
-        }).then(userResp => {
-          const playerCustom = userResp.data.custom || {};
-          const updatedFields = {};
-          updatedFields[`${prefix}finished`] = true;
-          updatedFields[`${prefix}finishTT`] = moveTT;
-          updatedFields[`${prefix}placement`] = currentPlacement;
-
-          return pubnub.objects.setUUIDMetadata({
-            uuid: playerId,
-            data: {
-              custom: {
-                ...playerCustom,
-                ...updatedFields
-              }
-            }
-          });
-        }).then(() => {
+          channels: [{
+            id: channelId,
+            custom: updatedMembershipCustom
+          }]
+        });
+      }).then(() => {
           // 4. Check if this is first-place winner (update Channel metadata)
           const isFirstPlace = currentPlacement === 1;
           let updateChannelPromise = Promise.resolve();
