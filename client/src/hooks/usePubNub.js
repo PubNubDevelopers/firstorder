@@ -11,16 +11,16 @@ export function usePubNub(config) {
   const listenersRef = useRef({});
 
   useEffect(() => {
-    console.log('usePubNub useEffect - config:', config);
+    console.log('[usePubNub] useEffect TRIGGERED - userId:', config?.userId);
 
     if (!config?.publishKey || !config?.subscribeKey) {
-      console.error('PubNub keys are missing:', { publishKey: config?.publishKey, subscribeKey: config?.subscribeKey });
+      console.error('[usePubNub] PubNub keys are missing:', { publishKey: config?.publishKey, subscribeKey: config?.subscribeKey });
       setError('PubNub keys are required');
       return;
     }
 
     try {
-      console.log('Initializing PubNub with userId:', config.userId);
+      console.log('[usePubNub] *** INITIALIZING NEW PUBNUB INSTANCE ***');
       const pn = new PubNub({
         publishKey: config.publishKey,
         subscribeKey: config.subscribeKey,
@@ -31,20 +31,20 @@ export function usePubNub(config) {
         presenceTimeout: 300     // Mark as offline after 300 seconds (5 minutes)
       });
 
-      console.log('PubNub initialized successfully');
+      console.log('[usePubNub] PubNub initialized, setting state');
       setPubnub(pn);
       setIsConnected(true);
       setError(null);
 
       return () => {
-        console.log('Cleaning up PubNub connection');
+        console.log('[usePubNub] *** CLEANUP - DESTROYING PUBNUB INSTANCE ***');
         if (pn) {
           pn.unsubscribeAll();
           pn.stop();
         }
       };
     } catch (err) {
-      console.error('Error initializing PubNub:', err);
+      console.error('[usePubNub] Error initializing PubNub:', err);
       setError(err.message);
     }
   }, [config?.publishKey, config?.subscribeKey, config?.userId]);
@@ -78,7 +78,8 @@ export function usePubNub(config) {
         console.log('STATUS event received:', statusEvent.category);
         if (statusEvent.category === 'PNConnectedCategory') {
           console.log('Connected to PubNub');
-          setIsConnected(true);
+          // DO NOT call setIsConnected(true) here - it's already set on init
+          // Calling it here causes infinite loops in components that depend on isConnected
 
           // Set presence state after a brief delay to ensure subscription is ready
           if (presenceState) {

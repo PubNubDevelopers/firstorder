@@ -216,19 +216,23 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
 
   // Subscribe to lobby channel
   useEffect(() => {
-    console.log('[LobbyV2] useEffect triggered - isConnected:', isConnected, 'playerName:', playerInfo.playerName, 'initialized:', initializedRef.current);
+    console.log('[LobbyV2] ====== SUBSCRIPTION EFFECT TRIGGERED ======');
+    console.log('[LobbyV2]   isConnected:', isConnected);
+    console.log('[LobbyV2]   playerName:', playerInfo.playerName);
+    console.log('[LobbyV2]   initializedRef.current:', initializedRef.current);
+    console.log('[LobbyV2]   gameListFetchedRef.current:', gameListFetchedRef.current);
 
     if (!isConnected) {
-      console.log('[LobbyV2] Waiting for PubNub connection...');
+      console.log('[LobbyV2] SKIP: Waiting for PubNub connection');
       return;
     }
 
     if (initializedRef.current) {
-      console.log('[LobbyV2] Already initialized, skipping');
+      console.log('[LobbyV2] SKIP: Already initialized');
       return;
     }
 
-    console.log('[LobbyV2] Initializing lobby subscriptions');
+    console.log('[LobbyV2] *** PROCEEDING WITH INITIALIZATION ***');
     initializedRef.current = true;
 
     const unsubscribeLobby = subscribe(

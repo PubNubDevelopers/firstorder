@@ -156,9 +156,19 @@ export async function listGames(pubnub) {
   try {
     const games = [];
     let page = null;
+    let iterations = 0;
+    const MAX_ITERATIONS = 10; // Safety limit to prevent infinite loops
 
     // Fetch all channel metadata (paginated) with server-side filtering
     do {
+      iterations++;
+      console.log(`[listGames] *** ITERATION ${iterations} ***`);
+
+      if (iterations > MAX_ITERATIONS) {
+        console.error('[listGames] MAX ITERATIONS REACHED - Breaking infinite loop!');
+        break;
+      }
+
       const params = {
         limit: 100,
         include: {
@@ -174,7 +184,13 @@ export async function listGames(pubnub) {
 
       console.log('[listGames] Calling getAllChannelMetadata with params:', params);
       const response = await pubnub.objects.getAllChannelMetadata(params);
-      console.log('[listGames] Got response with', response.data?.length || 0, 'channels');
+      console.log('[listGames] Got response:', {
+        dataLength: response.data?.length || 0,
+        next: response.next,
+        prev: response.prev,
+        totalCount: response.totalCount,
+        status: response.status
+      });
 
       // Filter for game channels (already filtered to CREATED by server)
       if (response.data) {
@@ -186,24 +202,39 @@ export async function listGames(pubnub) {
             const gameState = JSON.parse(channel.custom.gameState);
 
             console.log('[listGames] Found CREATED game:', gameState.gameId);
-            games.push({
-              gameId: gameState.gameId,
-              gameName: gameState.gameName,
-              tileCount: gameState.tileCount,
-              emojiTheme: gameState.emojiTheme,
-              maxPlayers: gameState.maxPlayers,
-              phase: gameState.phase,
-              playerIds: gameState.playerIds,
-              playerNames: gameState.playerNames || {},
-              playerLocations: gameState.playerLocations || {},
-              playerCount: gameState.playerIds.length,
-              createdAt: gameState.createdAt
-            });
+
+            // Check for duplicate before adding
+            if (!games.some(g => g.gameId === gameState.gameId)) {
+              games.push({
+                gameId: gameState.gameId,
+                gameName: gameState.gameName,
+                tileCount: gameState.tileCount,
+                emojiTheme: gameState.emojiTheme,
+                maxPlayers: gameState.maxPlayers,
+                phase: gameState.phase,
+                playerIds: gameState.playerIds,
+                playerNames: gameState.playerNames || {},
+                playerLocations: gameState.playerLocations || {},
+                playerCount: gameState.playerIds.length,
+                createdAt: gameState.createdAt
+              });
+            } else {
+              console.log('[listGames] Duplicate detected - skipping');
+            }
           }
         }
       }
 
+      const previousPage = page;
       page = response.next;
+
+      console.log('[listGames] Pagination:', { previousPage, newPage: page, continuing: !!(page && page !== 'NA') });
+
+      // Break if we're getting the same page repeatedly
+      if (page && page === previousPage) {
+        console.error('[listGames] SAME PAGE RETURNED - Breaking infinite loop!');
+        break;
+      }
     } while (page && page !== 'NA'); // Stop if no more pages or page is 'NA'
 
     console.log('[listGames] Total games found:', games.length);
