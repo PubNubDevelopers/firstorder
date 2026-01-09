@@ -286,26 +286,32 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, playerInfo.playerName]);
 
-  // Fetch game list and recent games when pubnub is ready - ONLY ONCE
+  // Fetch game list and recent games when component mounts - ONLY ONCE
+  // Uses pubnubRef.current which is kept up to date, so no need for pubnub in deps
   useEffect(() => {
-    console.log('[LobbyV2] Game list fetch effect - pubnub exists:', !!pubnub, 'already fetched:', gameListFetchedRef.current);
-
-    if (!pubnub) {
-      console.log('[LobbyV2] No PubNub instance yet, skipping fetch');
-      return;
-    }
+    console.log('[LobbyV2] Game list fetch effect - pubnubRef exists:', !!pubnubRef.current, 'already fetched:', gameListFetchedRef.current);
 
     if (gameListFetchedRef.current) {
       console.log('[LobbyV2] Game list ALREADY FETCHED - preventing duplicate fetch');
       return;
     }
 
-    console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
-    gameListFetchedRef.current = true;
-    fetchGameList();
-    fetchRecentGames();
+    // Wait a tick for pubnubRef to be populated
+    const timer = setTimeout(() => {
+      if (!pubnubRef.current) {
+        console.log('[fetchGameList] PubNub still not ready after delay');
+        return;
+      }
+
+      console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
+      gameListFetchedRef.current = true;
+      fetchGameList();
+      fetchRecentGames();
+    }, 100);
+
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pubnub, fetchGameList, fetchRecentGames]); // Run when pubnub becomes available
+  }, []); // Run only once on mount
 
   // Handle create game
   const handleCreateGame = async (options) => {
