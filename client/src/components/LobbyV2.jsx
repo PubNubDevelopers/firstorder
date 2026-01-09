@@ -286,32 +286,32 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, playerInfo.playerName]);
 
-  // Fetch game list and recent games when component mounts - ONLY ONCE
-  // Uses pubnubRef.current which is kept up to date, so no need for pubnub in deps
+  // Fetch game list and recent games when PubNub is connected - ONLY ONCE
+  // Triggered by isConnected becoming true, uses pubnubRef for actual instance
   useEffect(() => {
-    console.log('[LobbyV2] Game list fetch effect - pubnubRef exists:', !!pubnubRef.current, 'already fetched:', gameListFetchedRef.current);
+    console.log('[LobbyV2] Game list fetch effect - isConnected:', isConnected, 'pubnubRef exists:', !!pubnubRef.current, 'already fetched:', gameListFetchedRef.current);
+
+    if (!isConnected) {
+      console.log('[LobbyV2] PubNub not connected yet, skipping fetch');
+      return;
+    }
 
     if (gameListFetchedRef.current) {
       console.log('[LobbyV2] Game list ALREADY FETCHED - preventing duplicate fetch');
       return;
     }
 
-    // Wait a tick for pubnubRef to be populated
-    const timer = setTimeout(() => {
-      if (!pubnubRef.current) {
-        console.log('[fetchGameList] PubNub still not ready after delay');
-        return;
-      }
+    if (!pubnubRef.current) {
+      console.log('[LobbyV2] PubNub ref not ready yet despite isConnected=true');
+      return;
+    }
 
-      console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
-      gameListFetchedRef.current = true;
-      fetchGameList();
-      fetchRecentGames();
-    }, 100);
-
-    return () => clearTimeout(timer);
+    console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
+    gameListFetchedRef.current = true;
+    fetchGameList();
+    fetchRecentGames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+  }, [isConnected]); // Run when PubNub becomes connected
 
   // Handle create game
   const handleCreateGame = async (options) => {
