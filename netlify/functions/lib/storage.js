@@ -14,11 +14,10 @@
 
 /**
  * Helper: Convert game data object to Channel custom fields
+ * Note: gameId and gameName are stored in basic channel.id and channel.name fields
  */
 function gameToChannelFields(gameData) {
   return {
-    gameId: gameData.gameId,
-    gameName: gameData.gameName || null,
     tileCount: gameData.tileCount,
     emojiTheme: gameData.emojiTheme,
     maxPlayers: gameData.maxPlayers,
@@ -94,10 +93,10 @@ async function getGameMetadata(pubnub, gameId) {
 
     const custom = response.data.custom;
 
-    // Parse JSON fields
+    // Parse JSON fields and include basic channel fields
     return {
-      gameId: custom.gameId,
-      gameName: custom.gameName,
+      gameId: gameId, // From channel.id (game.{gameId})
+      gameName: response.data.name || null, // From channel.name
       phase: custom.phase || response.data.status,
       tileCount: custom.tileCount,
       emojiTheme: custom.emojiTheme,
@@ -145,7 +144,6 @@ async function setGameMetadata(pubnub, gameId, gameData) {
       channel: channelId,
       data: {
         name: gameData.gameName || `Game ${gameId}`,
-        description: `First Order game - Status: ${gameData.phase}`,
         status: gameData.phase, // Use basic status field for filtering
         custom: customFields
       }
@@ -419,11 +417,8 @@ async function getGame(pubnub, gameId) {
       playerNames[playerId] = playerName;
 
       if (member.uuid.custom?.playerLocation) {
-        try {
-          playerLocations[playerId] = JSON.parse(member.uuid.custom.playerLocation);
-        } catch (e) {
-          playerLocations[playerId] = null;
-        }
+        // playerLocation is now stored as a string (e.g., "USA - AZ" or "Canada")
+        playerLocations[playerId] = member.uuid.custom.playerLocation;
       }
 
       players[playerId] = {
@@ -435,6 +430,7 @@ async function getGame(pubnub, gameId) {
         placements.push({
           playerId,
           playerName,
+          playerLocation: member.uuid.custom?.playerLocation || null,
           placement: playerGameState.placement,
           finishTT: playerGameState.finishTT,
           moveCount: playerGameState.moveCount

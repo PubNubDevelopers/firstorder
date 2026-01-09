@@ -199,7 +199,8 @@ export async function listGames(pubnub) {
             const custom = channel.custom;
 
             // v3.0.0: Read from individual custom fields (not gameState JSON)
-            const gameId = custom.gameId;
+            // gameId and gameName are stored in basic channel fields
+            const gameId = channel.id.replace('game.', ''); // Extract from channel.id
             const phase = custom.phase || channel.status;
 
             console.log('[listGames] Found CREATED game:', gameId);
@@ -224,17 +225,14 @@ export async function listGames(pubnub) {
                 members.forEach(m => {
                   playerNames[m.uuid.id] = m.uuid.name;
                   if (m.uuid.custom?.playerLocation) {
-                    try {
-                      playerLocations[m.uuid.id] = JSON.parse(m.uuid.custom.playerLocation);
-                    } catch (e) {
-                      console.error('[listGames] Error parsing playerLocation:', e);
-                    }
+                    // playerLocation is now stored as a string (e.g., "USA - AZ" or "Canada")
+                    playerLocations[m.uuid.id] = m.uuid.custom.playerLocation;
                   }
                 });
 
                 games.push({
                   gameId,
-                  gameName: custom.gameName || null,
+                  gameName: channel.name || null, // From basic channel.name field
                   tileCount: custom.tileCount,
                   emojiTheme: custom.emojiTheme,
                   maxPlayers: custom.maxPlayers,

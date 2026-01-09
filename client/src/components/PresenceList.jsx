@@ -1,5 +1,5 @@
 import React from 'react';
-import { getLocationDisplay } from '../utils/flagEmojis';
+import PlayerName from './PlayerName';
 
 /**
  * PresenceList - Sidebar widget showing online players
@@ -21,13 +21,11 @@ export default function PresenceList({ players }) {
           <div className="presence-items">
             {players.map(player => (
               <div key={player.uuid} className="presence-item">
-                <span className="presence-avatar">👤</span>
-                <span className="presence-name">{player.playerName}</span>
-                {player.location && (
-                  <span className="presence-location">
-                    {getLocationDisplay(player.location, true)}
-                  </span>
-                )}
+                <PlayerName
+                  name={player.playerName}
+                  location={player.location}
+                  className="presence-name"
+                />
               </div>
             ))}
           </div>

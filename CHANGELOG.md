@@ -75,9 +75,12 @@ This is a major architectural refactor that **breaks backward compatibility** wi
 **Channel Metadata Structure (Game-Level Only):**
 ```javascript
 {
+  id: "game.{gameId}",  // gameId stored in channel.id
+  name: "Game Name",    // gameName stored in channel.name
   status: "CREATED" | "LIVE" | "OVER",
   custom: {
-    gameId, gameName, tileCount, emojiTheme, maxPlayers,
+    // Note: gameId and gameName NOT duplicated here
+    tileCount, emojiTheme, maxPlayers, placementCount,
     tiles, goalOrder, initialOrder,  // JSON strings
     createdAt, startTT, winTT, lockedTT, endTT, hostLeftTT,
     winnerPlayerId, winnerName

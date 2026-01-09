@@ -8,6 +8,7 @@ import QuickActions from './QuickActions';
 import PresenceList from './PresenceList';
 import RecentGames from './RecentGames';
 import { getPlayerLocation } from '../utils/playerStorage';
+import { formatLocationString } from '../utils/geolocation';
 import musicPlayer from '../utils/musicPlayer';
 import '../styles/lobby-v2.css';
 
@@ -151,7 +152,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
 
   // Create/update User object when entering lobby (v3.0.0)
   useEffect(() => {
-    if (!pubnubRef.current || !playerInfo?.playerId) {
+    if (!pubnub || !playerInfo?.playerId) {
       console.log('[LobbyV2] Skipping User object creation - PubNub or playerInfo not ready');
       return;
     }
@@ -163,7 +164,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
         // Check if user exists
         let existingUser = null;
         try {
-          const response = await pubnubRef.current.objects.getUUIDMetadata({
+          const response = await pubnub.objects.getUUIDMetadata({
             uuid: playerInfo.playerId,
             include: { customFields: true }
           });
@@ -173,16 +174,18 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
         }
 
         const playerLocation = getPlayerLocation();
+        // Format location as string (e.g., "USA - AZ" or "Canada")
+        const locationString = playerLocation ? formatLocationString(playerLocation) : null;
 
         if (!existingUser) {
           // Create new user
-          console.log('[LobbyV2] Creating new User object');
-          await pubnubRef.current.objects.setUUIDMetadata({
+          console.log('[LobbyV2] Creating new User object with location:', locationString);
+          await pubnub.objects.setUUIDMetadata({
             uuid: playerInfo.playerId,
             data: {
               name: playerInfo.playerName,
               custom: {
-                playerLocation: playerLocation ? JSON.stringify(playerLocation) : null
+                playerLocation: locationString
               }
             }
           });
@@ -190,13 +193,13 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
         } else {
           // Update existing user (in case name or location changed)
           console.log('[LobbyV2] Updating existing User object');
-          await pubnubRef.current.objects.setUUIDMetadata({
+          await pubnub.objects.setUUIDMetadata({
             uuid: playerInfo.playerId,
             data: {
               name: playerInfo.playerName,
               custom: {
                 ...existingUser.custom,
-                playerLocation: playerLocation ? JSON.stringify(playerLocation) : null
+                playerLocation: locationString
               }
             }
           });
@@ -208,7 +211,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     }
 
     ensureUserExists();
-  }, [playerInfo?.playerId, playerInfo?.playerName]);
+  }, [pubnub, playerInfo?.playerId, playerInfo?.playerName]);
 
   // Handle real-time game events
   const handleGameCreated = useCallback((message) => {
@@ -296,6 +299,10 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     console.log('[LobbyV2] *** PROCEEDING WITH INITIALIZATION ***');
     initializedRef.current = true;
 
+    // Format location as string for presence state
+    const playerLocation = getPlayerLocation();
+    const locationString = playerLocation ? formatLocationString(playerLocation) : null;
+
     const unsubscribeLobby = subscribe(
       'lobby',
       (event) => {
@@ -332,7 +339,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
         withPresence: true,
         presenceState: {
           playerName: playerInfo.playerName,
-          location: getPlayerLocation()
+          location: locationString
         }
       }
     );

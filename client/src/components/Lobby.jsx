@@ -3,7 +3,7 @@ import { createGame, joinGame as joinGameApi, listGames } from '../utils/gameApi
 import { usePubNub } from '../hooks/usePubNub';
 import CreateGameModal from './CreateGameModal';
 import HelpModal from './HelpModal';
-import { getLocationDisplay } from '../utils/flagEmojis';
+import PlayerName from './PlayerName';
 import { getPlayerLocation } from '../utils/playerStorage';
 import { EMOJI_THEMES } from '../utils/emojiThemes';
 import musicPlayer from '../utils/musicPlayer';
@@ -72,12 +72,11 @@ function GameCard({ game, playerInfo, onJoin, loading }) {
             {game.playerIds.map(pid => (
               <div key={pid} className="player-item">
                 {pid === hostId && <span className="host-icon">👑</span>}
-                <span className="location-flags">
-                  {getLocationDisplay(game.playerLocations?.[pid])}
-                </span>
-                <span className="player-name">
-                  {game.playerNames[pid] || pid.substring(0, 20)}
-                </span>
+                <PlayerName
+                  name={game.playerNames[pid] || pid.substring(0, 20)}
+                  location={game.playerLocations?.[pid]}
+                  className="player-name"
+                />
                 {pid === hostId && <span className="host-badge">Host</span>}
               </div>
             ))}
@@ -476,10 +475,10 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
                 key={occupant.uuid}
                 className="player-item"
               >
-                <span className="location-flags">
-                  {getLocationDisplay(occupant.state?.location)}
-                </span>
-                {occupant.state?.playerName || `Player ${occupant.uuid.substring(7, 20)}`}
+                <PlayerName
+                  name={occupant.state?.playerName || `Player ${occupant.uuid.substring(7, 20)}`}
+                  location={occupant.state?.location}
+                />
               </div>
             ))}
           </div>

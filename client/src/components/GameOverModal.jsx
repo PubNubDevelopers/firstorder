@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { orderToArray } from '../utils/gameUtils';
+import PlayerName from './PlayerName';
 
 // Winner messages (50)
 const WINNER_MESSAGES = [
@@ -232,7 +233,7 @@ export default function GameOverModal({
                     {p.placement === 3 && '🥉'}
                   </span>
                   <span className="leaderboard-name">
-                    {p.playerName}
+                    <PlayerName name={p.playerName} location={p.playerLocation} />
                     {p.playerId === playerId && ' (You)'}
                   </span>
                   <span className="leaderboard-place">

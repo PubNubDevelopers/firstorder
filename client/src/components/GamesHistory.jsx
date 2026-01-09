@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePubNub } from '../hooks/usePubNub';
-import { getLocationDisplay } from '../utils/flagEmojis';
 import { EMOJI_THEMES } from '../utils/emojiThemes';
 
 /**

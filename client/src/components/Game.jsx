@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePubNub } from '../hooks/usePubNub';
 import { startGame as startGameApi, getGame, leaveGame as leaveGameApi, updateGameName } from '../utils/gameApi';
 import PlayerBoard from './PlayerBoard';
+import PlayerName from './PlayerName';
 import GameOverModal from './GameOverModal';
 import ConfirmDialog from './ConfirmDialog';
 import {
@@ -83,10 +84,12 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
             if (!updated[pid]) {
               const displayName = fetchedGameState.playerNames?.[pid] ||
                                  (pid === playerId ? playerName : `Player ${pid.slice(-4)}`);
-              console.log(`Initializing player ${pid} with name: ${displayName}`);
+              const location = fetchedGameState.playerLocations?.[pid] || null;
+              console.log(`Initializing player ${pid} with name: ${displayName}, location: ${location}`);
               updated[pid] = {
                 playerId: pid,
                 playerName: displayName,
+                playerLocation: location,
                 currentOrder: null,
                 moveCount: 0,
                 positionsCorrect: 0,
@@ -176,9 +179,11 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
           message.playerIds.forEach(pid => {
             if (!updated[pid]) {
               const displayName = message.playerNames?.[pid] || `Player ${pid.slice(-4)}`;
+              const location = message.playerLocations?.[pid] || null;
               updated[pid] = {
                 playerId: pid,
                 playerName: displayName,
+                playerLocation: location,
                 currentOrder: null, // Don't show other players' positions
                 moveCount: 0,
                 positionsCorrect: 0,
@@ -747,6 +752,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
           <PlayerBoard
             playerId={playerId}
             playerName={playerName}
+            playerLocation={currentPlayerState.playerLocation}
             currentOrder={currentPlayerState.currentOrder}
             moveCount={currentPlayerState.moveCount}
             positionsCorrect={currentPlayerState.positionsCorrect}
@@ -791,7 +797,10 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
                       className={player.playerId === playerId ? 'current-player-row' : ''}
                     >
                       <td>
-                        {player.playerName || `Player ${player.playerId.slice(-4)}`}
+                        <PlayerName
+                          name={player.playerName || `Player ${player.playerId.slice(-4)}`}
+                          location={player.playerLocation}
+                        />
                         {player.playerId === playerId && <span className="you-badge"> (You)</span>}
                       </td>
                       <td className="progress-cell">

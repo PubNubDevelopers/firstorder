@@ -184,6 +184,7 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
         return {
           uuid: member.uuid.id,
           name: member.uuid.name,
+          location: member.uuid.custom?.playerLocation || null,
           finished: membershipCustom.finished || false,
           placement: membershipCustom.placement || null,
           finishTT: membershipCustom.finishTT || null,
@@ -280,10 +281,11 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
                   moveTT: moveTT
                 }
               }).then(() => {
-                // 8. Build placements array from User objects
+                // 8. Build placements array from User objects (include location)
                 const placements = [...finishedPlayers, {
                   uuid: playerId,
                   name: playerName,
+                  location: playerResponse.data.custom?.playerLocation || null,
                   finished: true,
                   placement: currentPlacement,
                   finishTT: moveTT,
@@ -291,6 +293,7 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
                 }].sort((a, b) => a.placement - b.placement).map(p => ({
                   playerId: p.uuid,
                   playerName: p.name,
+                  playerLocation: p.location,
                   placement: p.placement,
                   finishTT: p.finishTT,
                   moveCount: p.moveCount

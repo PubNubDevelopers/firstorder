@@ -1,5 +1,5 @@
 import React from 'react';
-import { getLocationDisplay } from '../utils/flagEmojis';
+import PlayerName from './PlayerName';
 import { EMOJI_THEMES } from '../utils/emojiThemes';
 
 /**
@@ -66,9 +66,8 @@ export default function GameCard({ game, onJoin, loading }) {
             const playerName = playerNames[playerId] || `Player ${playerId.slice(-4)}`;
             const location = playerLocations?.[playerId];
             return (
-              <div key={playerId} className="player-avatar" title={playerName}>
-                <span className="avatar-icon">👤</span>
-                {location && <span className="avatar-flag">{getLocationDisplay(location, true)}</span>}
+              <div key={playerId} className="player-avatar">
+                <PlayerName name={playerName} location={location} className="avatar-flag" />
               </div>
             );
           })}
