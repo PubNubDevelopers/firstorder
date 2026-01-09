@@ -338,11 +338,11 @@ function handleWin(gameId, playerId, moveTT, moveCount, positionsCorrect, gameCu
             });
           });
         });
+      }).then(() => {
+        console.log('Player finished successfully');
+        // Abort the original MOVE_SUBMIT message
+        return request.abort();
       });
-    }).then(() => {
-      console.log('Player finished successfully');
-      // Abort the original MOVE_SUBMIT message
-      return request.abort();
     });
   }).catch(error => {
     console.error('Error handling win:', error);
