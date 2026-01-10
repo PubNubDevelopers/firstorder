@@ -438,61 +438,15 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
         setGoalOrder(goalOrder);
       }
 
-      const adminChannel = `admin.${gameId}`;
-      const tiles = response.tiles;
-      const initialOrder = response.initialOrder;
-
-      // Wait 500ms to ensure all players are subscribed to admin channel
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Publish countdown: 3
-      await publish(adminChannel, {
-        v: 1,
-        type: 'COUNTDOWN',
-        gameId: gameId,
-        countdown: 3,
-        tiles: tiles,
-        initialOrder: initialOrder
-      });
-
-      // Wait 1 second, then publish: 2
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await publish(adminChannel, {
-        v: 1,
-        type: 'COUNTDOWN',
-        gameId: gameId,
-        countdown: 2
-      });
-
-      // Wait 1 second, then publish: 1
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await publish(adminChannel, {
-        v: 1,
-        type: 'COUNTDOWN',
-        gameId: gameId,
-        countdown: 1
-      });
-
-      // Wait 1 second, then publish GAME_START
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await publish(adminChannel, {
-        v: 1,
-        type: 'GAME_START',
-        gameId: gameId,
-        phase: 'LIVE',
-        tiles: tiles,
-        initialOrder: initialOrder,
-        goalOrder: goalOrder, // Include goalOrder for verified positions feature
-        tilePinningEnabled: gameState?.tilePinningEnabled || false,
-        verifiedPositionsEnabled: gameState?.verifiedPositionsEnabled || false
-      });
+      // Server now handles countdown sequence - client just waits for messages
+      // COUNTDOWN and GAME_START messages will arrive via subscription
 
     } catch (err) {
       console.error('Error starting game:', err);
       alert(`Failed to start game: ${err.message}`);
       setIsStartingGame(false);
     }
-  }, [gameId, playerId, publish, gameState]);
+  }, [gameId, playerId]);
 
   // Handle game name update
   const handleUpdateGameName = async () => {

@@ -538,6 +538,66 @@ async function startGame(pubnub, body) {
       }
     });
 
+    // 12. Server-side countdown sequence
+    const adminChannel = `admin.${gameId}`;
+
+    // Wait 500ms to ensure all players are subscribed to admin channel
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Publish countdown: 3
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'COUNTDOWN',
+        gameId: gameId,
+        countdown: 3,
+        tiles: tiles,
+        initialOrder: initialOrder
+      }
+    });
+
+    // Wait 1 second, then publish: 2
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'COUNTDOWN',
+        gameId: gameId,
+        countdown: 2
+      }
+    });
+
+    // Wait 1 second, then publish: 1
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'COUNTDOWN',
+        gameId: gameId,
+        countdown: 1
+      }
+    });
+
+    // Wait 1 second, then publish GAME_START
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'GAME_START',
+        gameId: gameId,
+        phase: 'LIVE',
+        tiles: tiles,
+        initialOrder: initialOrder,
+        goalOrder: goalOrder,
+        tilePinningEnabled: gameMetadata.tilePinningEnabled || false,
+        verifiedPositionsEnabled: gameMetadata.verifiedPositionsEnabled || false
+      }
+    });
+
     return {
       statusCode: 200,
       body: {
