@@ -34,7 +34,8 @@ export async function createGame(playerId, playerName, options, location) {
         maxPlayers: options.maxPlayers || 1,
         gameName: options.gameName || null,
         tilePinningEnabled: options.tilePinningEnabled || false,
-        verifiedPositionsEnabled: options.verifiedPositionsEnabled || false
+        verifiedPositionsEnabled: options.verifiedPositionsEnabled || false,
+        inviteOnly: options.inviteOnly || false
       },
       location: location || null
     }),
@@ -151,7 +152,7 @@ export async function listGames(pubnub) {
     throw new Error('PubNub instance is required');
   }
 
-  console.log('[listGames] Querying App Context directly from client...');
+  console.log('[listGames] Querying App Context (v3.0.0) directly from client...');
 
   try {
     const games = [];
@@ -195,29 +196,61 @@ export async function listGames(pubnub) {
       // Filter for game channels (already filtered to CREATED by server)
       if (response.data) {
         for (const channel of response.data) {
-          if (channel.id.startsWith('game.') &&
-              channel.custom &&
-              channel.custom.gameState) {
+          // Only process game channels - ensure channel.id is a string
+          if (!channel.id || typeof channel.id !== 'string' || !channel.id.startsWith('game.')) continue;
+          if (channel.custom) {
+            const custom = channel.custom;
 
-            const gameState = JSON.parse(channel.custom.gameState);
+            // v3.0.0: Read from individual custom fields (not gameState JSON)
+            // gameId and gameName are stored in basic channel fields
+            const gameId = channel.id.replace('game.', ''); // Extract from channel.id
+            const phase = custom.phase || channel.status;
 
-            console.log('[listGames] Found CREATED game:', gameState.gameId);
+            console.log('[listGames] Found CREATED game:', gameId);
 
             // Check for duplicate before adding
-            if (!games.some(g => g.gameId === gameState.gameId)) {
-              games.push({
-                gameId: gameState.gameId,
-                gameName: gameState.gameName,
-                tileCount: gameState.tileCount,
-                emojiTheme: gameState.emojiTheme,
-                maxPlayers: gameState.maxPlayers,
-                phase: gameState.phase,
-                playerIds: gameState.playerIds,
-                playerNames: gameState.playerNames || {},
-                playerLocations: gameState.playerLocations || {},
-                playerCount: gameState.playerIds.length,
-                createdAt: gameState.createdAt
-              });
+            if (!games.some(g => g.gameId === gameId)) {
+              // Query Channel members to get player info
+              try {
+                const membersResponse = await pubnub.objects.getChannelMembers({
+                  channel: channel.id,
+                  include: {
+                    UUIDFields: true,
+                    customFields: true
+                  }
+                });
+
+                const members = membersResponse.data || [];
+                const playerIds = members.map(m => m.uuid.id);
+                const playerNames = {};
+                const playerLocations = {};
+
+                members.forEach(m => {
+                  playerNames[m.uuid.id] = m.uuid.name;
+                  if (m.uuid.custom?.playerLocation) {
+                    // playerLocation is now stored as a string (e.g., "USA - AZ" or "Canada")
+                    playerLocations[m.uuid.id] = m.uuid.custom.playerLocation;
+                  }
+                });
+
+                games.push({
+                  gameId,
+                  gameName: channel.name || null, // From basic channel.name field
+                  tileCount: custom.tileCount,
+                  emojiTheme: custom.emojiTheme,
+                  maxPlayers: custom.maxPlayers,
+                  phase,
+                  playerIds,
+                  playerNames,
+                  playerLocations,
+                  playerCount: members.length,
+                  createdAt: custom.createdAt,
+                  inviteOnly: custom.inviteOnly || false // NEW: Include invite-only flag
+                });
+              } catch (memberError) {
+                console.error('[listGames] Error fetching members for', gameId, ':', memberError);
+                // Skip this game if we can't get member info
+              }
             } else {
               console.log('[listGames] Duplicate detected - skipping');
             }

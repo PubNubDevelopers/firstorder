@@ -54,7 +54,7 @@ export function usePubNub(config) {
 
     if (!pubnub) {
       console.error('PubNub not initialized');
-      return;
+      return Promise.resolve(() => {});
     }
 
     const { withPresence = false, presenceState = null } = options;
@@ -80,24 +80,6 @@ export function usePubNub(config) {
           console.log('Connected to PubNub');
           // DO NOT call setIsConnected(true) here - it's already set on init
           // Calling it here causes infinite loops in components that depend on isConnected
-
-          // Set presence state after a brief delay to ensure subscription is ready
-          if (presenceState) {
-            setTimeout(() => {
-              const channelArray = Array.isArray(channels) ? channels : [channels];
-              console.log('Setting presence state:', presenceState, 'for channels:', channelArray);
-              pubnub.setState({
-                channels: channelArray,
-                state: presenceState
-              }, (status, response) => {
-                if (status.error) {
-                  console.error('Error setting presence state:', status);
-                } else {
-                  console.log('Presence state set successfully:', response);
-                }
-              });
-            }, 100);
-          }
         } else if (statusEvent.category === 'PNNetworkDownCategory') {
           console.log('Network disconnected');
           setIsConnected(false);
@@ -115,10 +97,30 @@ export function usePubNub(config) {
       withPresence: withPresence
     });
 
+    // CRITICAL FIX: Set presence state IMMEDIATELY after subscribing and return a Promise
+    // that resolves when setState completes, preventing race conditions with hereNow()
+    const presencePromise = presenceState
+      ? new Promise((resolve, reject) => {
+          console.log('[usePubNub] Setting presence state IMMEDIATELY after subscribe:', presenceState, 'for channels:', channelArray);
+          pubnub.setState({
+            channels: channelArray,
+            state: presenceState
+          }, (status, response) => {
+            if (status.error) {
+              console.error('[usePubNub] ERROR setting presence state:', status);
+              reject(new Error('Failed to set presence state'));
+            } else {
+              console.log('[usePubNub] ✓ Presence state set successfully:', response);
+              resolve();
+            }
+          });
+        })
+      : Promise.resolve();
+
     listenersRef.current[channels] = listener;
     console.log('Subscription setup complete');
 
-    return () => {
+    const unsubscribe = () => {
       console.log('Unsubscribing from channels:', channelArray);
       pubnub.removeListener(listener);
       pubnub.unsubscribe({
@@ -126,6 +128,10 @@ export function usePubNub(config) {
       });
       delete listenersRef.current[channels];
     };
+
+    // Return a Promise that resolves to the unsubscribe function
+    // This allows callers to await the setState completion before fetching presence
+    return presencePromise.then(() => unsubscribe);
   }, [pubnub]);
 
   const publish = useCallback(async (channel, message) => {

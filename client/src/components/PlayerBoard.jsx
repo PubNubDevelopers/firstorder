@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Tile from './Tile';
+import PlayerName from './PlayerName';
 import { orderToArray, indexToPosition, swapPositions, calculatePositionsCorrect } from '../utils/gameUtils';
 import { playTileSwapSound } from '../utils/soundEffects';
 
@@ -9,6 +10,7 @@ import { playTileSwapSound } from '../utils/soundEffects';
 export default function PlayerBoard({
   playerId,
   playerName,
+  playerLocation,
   currentOrder,
   moveCount,
   positionsCorrect,
@@ -137,7 +139,7 @@ export default function PlayerBoard({
     <div className={boardClassName}>
       <div className="player-info">
         <div className="player-name">
-          {playerName}
+          <PlayerName name={playerName} location={playerLocation} />
           {isCurrentPlayer && ' (You)'}
           {isWinner && ' 🏆'}
         </div>

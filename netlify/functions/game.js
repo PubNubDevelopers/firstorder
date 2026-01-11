@@ -136,6 +136,12 @@ exports.handler = async (event) => {
       case 'clear_games':
         result = await clearGames(pubnub);
         break;
+      case 'invite_player':
+        result = await invitePlayer(pubnub, body);
+        break;
+      case 'reject_invitation':
+        result = await rejectInvitation(pubnub, body);
+        break;
       default:
         return {
           statusCode: 400,
@@ -163,7 +169,7 @@ exports.handler = async (event) => {
 };
 
 /**
- * Create a new game
+ * Create a new game (v3.0.0)
  */
 async function createGame(pubnub, body) {
   const { playerId, playerName, options, location } = body;
@@ -194,48 +200,59 @@ async function createGame(pubnub, body) {
     return 3; // maxPlayers >= 3
   }
 
-  // Create new game state with options
-  const gameState = {
-    gameId,
-    phase: 'CREATED',
-    gameName: options.gameName || null,
-    tileCount: options.tileCount,
-    emojiTheme: options.emojiTheme,
-    maxPlayers: options.maxPlayers,
-    placementCount: options.placementCount || calculateDefaultPlacements(options.maxPlayers),
-    tilePinningEnabled: options.tilePinningEnabled || false,
-    verifiedPositionsEnabled: options.verifiedPositionsEnabled || false,
-    players: {
-      [playerId]: {
-        playerId,
-        moveCount: 0,
-        currentOrder: null,
-        correctnessHistory: [],
-        positionsCorrect: 0,
-        finished: false,
-        finishTT: null
-      }
-    },
-    playerIds: [playerId],
-    playerNames: playerName ? { [playerId]: playerName } : {},
-    playerLocations: location ? { [playerId]: location } : {},
-    placements: [],  // Array of {playerId, playerName, finishTT, placement}
-    createdAt: Date.now(),
-    startTT: null,
-    winnerPlayerId: null,
-    winnerName: null,
-    winTT: null,
-    lockedTT: null,
-    goalOrder: null,
-    initialOrder: null,
-    tiles: null
-  };
-
   try {
-    // Store game state
-    await storage.setGame(pubnub, gameId, gameState);
+    // 1. Create/update User object
+    const existingUser = await storage.getPlayer(pubnub, playerId);
+    if (!existingUser) {
+      await storage.setPlayer(pubnub, playerId, {
+        name: playerName || playerId,
+        playerLocation: location ? JSON.stringify(location) : null
+      });
+    }
 
-    // Publish PLAYER_JOINED to admin channel
+    // 2. Create game Channel metadata (game-level data only)
+    const inviteOnly = options.inviteOnly || false;
+    console.log(`[createGame] inviteOnly from options: ${options.inviteOnly}, final value: ${inviteOnly}`);
+
+    const gameMetadata = {
+      gameId,
+      phase: 'CREATED',
+      gameName: options.gameName || null,
+      tileCount: options.tileCount,
+      emojiTheme: options.emojiTheme,
+      maxPlayers: options.maxPlayers,
+      placementCount: options.placementCount || calculateDefaultPlacements(options.maxPlayers),
+      tilePinningEnabled: options.tilePinningEnabled || false,
+      verifiedPositionsEnabled: options.verifiedPositionsEnabled || false,
+      inviteOnly,  // NEW: Add invite-only flag
+      createdAt: Date.now(),
+      startTT: null,
+      winnerPlayerId: null,
+      winnerName: null,
+      winTT: null,
+      lockedTT: null,
+      goalOrder: null,
+      initialOrder: null,
+      tiles: null
+    };
+
+    // Set channel type to "private" for invite-only games
+    const channelType = inviteOnly ? 'private' : undefined;
+    console.log(`[createGame] Setting channel type to: ${channelType}`);
+    await storage.setGameMetadata(pubnub, gameId, gameMetadata, channelType);
+
+    // 3. Add player as member (host role) with initial game state
+    await storage.addPlayerToGame(pubnub, playerId, gameId, 'host', {
+      moveCount: 0,
+      positionsCorrect: 0,
+      finished: false,
+      finishTT: null,
+      placement: null,
+      currentOrder: null,
+      correctnessHistory: []
+    });
+
+    // 5. Publish PLAYER_JOINED to admin channel
     await pubnub.publish({
       channel: `admin.${gameId}`,
       message: {
@@ -243,51 +260,55 @@ async function createGame(pubnub, body) {
         type: 'PLAYER_JOINED',
         gameId,
         playerId,
-        playerIds: gameState.playerIds,
-        playerNames: gameState.playerNames
+        playerIds: [playerId],
+        playerNames: { [playerId]: playerName || playerId }
       }
     });
 
-    // Publish GAME_CREATED to lobby channel
-    await pubnub.publish({
-      channel: 'lobby',
-      message: {
-        v: 1,
-        type: 'GAME_CREATED',
-        gameId,
-        gameName: gameState.gameName,
-        tileCount: gameState.tileCount,
-        emojiTheme: gameState.emojiTheme,
-        maxPlayers: gameState.maxPlayers,
-        createdAt: gameState.createdAt,
-        playerIds: gameState.playerIds,
-        playerNames: gameState.playerNames,
-        playerLocations: gameState.playerLocations,
-        playerCount: gameState.playerIds.length
-      }
-    });
+    // 6. Publish GAME_CREATED to lobby channel (only for public games)
+    if (!inviteOnly) {
+      await pubnub.publish({
+        channel: 'lobby',
+        message: {
+          v: 1,
+          type: 'GAME_CREATED',
+          gameId,
+          gameName: gameMetadata.gameName,
+          tileCount: gameMetadata.tileCount,
+          emojiTheme: gameMetadata.emojiTheme,
+          maxPlayers: gameMetadata.maxPlayers,
+          createdAt: gameMetadata.createdAt,
+          playerIds: [playerId],
+          playerNames: { [playerId]: playerName || playerId },
+          playerLocations: location ? { [playerId]: location } : {},
+          playerCount: 1
+        }
+      });
+    } else {
+      console.log(`[createGame] Private game ${gameId} created, not broadcasting to lobby`);
+    }
 
     return {
       statusCode: 200,
       body: {
         success: true,
         gameId,
-        gameName: gameState.gameName,
+        gameName: gameMetadata.gameName,
         phase: 'CREATED',
-        players: gameState.playerIds
+        players: [playerId]
       }
     };
   } catch (error) {
-    console.error('Error creating game:', error);
+    console.error('[createGame] Error:', error);
     return {
       statusCode: 500,
-      body: { error: 'Failed to create game' }
+      body: { error: 'Failed to create game', details: error.message }
     };
   }
 }
 
 /**
- * Join an existing game
+ * Join an existing game (v3.0.0)
  */
 async function joinGame(pubnub, body) {
   const { gameId, playerId, playerName, location } = body;
@@ -300,75 +321,127 @@ async function joinGame(pubnub, body) {
   }
 
   try {
-    // Get game state
-    const game = await storage.getGame(pubnub, gameId);
-
-    if (!game) {
+    // 1. Get game metadata
+    const gameMetadata = await storage.getGameMetadata(pubnub, gameId);
+    if (!gameMetadata) {
       return {
         statusCode: 404,
         body: { error: 'Game not found' }
       };
     }
 
-    // Check if game has already started
-    if (game.phase !== 'CREATED') {
+    // 2. Check if game has already started
+    if (gameMetadata.phase !== 'CREATED') {
       return {
         statusCode: 403,
         body: { error: 'Cannot join game that has already started' }
       };
     }
 
-    // Check if player already joined
-    if (game.playerIds.includes(playerId)) {
+    // 3. Get current members
+    const members = await storage.getGamePlayers(pubnub, gameId);
+    const playerIds = members.map(m => m.uuid.id);
+
+    // NEW: Check if game is invite-only
+    if (gameMetadata.inviteOnly) {
+      const existingMembership = members.find(m => m.uuid.id === playerId);
+
+      if (!existingMembership) {
+        return {
+          statusCode: 403,
+          body: { error: 'This is a private game. You must be invited to join.' }
+        };
+      }
+
+      const membershipStatus = existingMembership.custom?.status;
+
+      if (membershipStatus === 'DENIED') {
+        return {
+          statusCode: 403,
+          body: { error: 'You declined the invitation to this game.' }
+        };
+      }
+
+      if (membershipStatus === 'JOINED') {
+        // Already joined - idempotent success
+        return {
+          statusCode: 200,
+          body: {
+            success: true,
+            gameId,
+            phase: gameMetadata.phase,
+            players: playerIds,
+            message: 'Already joined this game'
+          }
+        };
+      }
+
+      // If status is INVITED, continue to update it to JOINED below
+    }
+
+    // 4. Check if player already joined (for public games)
+    if (playerIds.includes(playerId)) {
       return {
         statusCode: 200,
         body: {
           success: true,
           gameId,
-          phase: game.phase,
-          players: game.playerIds,
+          phase: gameMetadata.phase,
+          players: playerIds,
           message: 'Player already in game'
         }
       };
     }
 
-    // Check if game is full
-    const maxPlayers = game.maxPlayers || 10;
-    if (game.playerIds.length >= maxPlayers) {
+    // 5. Check if game is full
+    if (members.length >= gameMetadata.maxPlayers) {
       return {
         statusCode: 403,
-        body: { error: `Game is full (max ${maxPlayers} players)` }
+        body: { error: `Game is full (max ${gameMetadata.maxPlayers} players)` }
       };
     }
 
-    // Add player to game
-    game.players[playerId] = {
-      playerId,
+    // 6. Create/update User object
+    const existingUser = await storage.getPlayer(pubnub, playerId);
+    if (!existingUser) {
+      await storage.setPlayer(pubnub, playerId, {
+        name: playerName || playerId,
+        playerLocation: location ? JSON.stringify(location) : null
+      });
+    }
+
+    // 7. Add player as member with initial game state
+    await storage.addPlayerToGame(pubnub, playerId, gameId, 'player', {
       moveCount: 0,
-      currentOrder: null,
-      correctnessHistory: [],
       positionsCorrect: 0,
       finished: false,
-      finishTT: null
-    };
-    game.playerIds.push(playerId);
+      finishTT: null,
+      placement: null,
+      currentOrder: null,
+      correctnessHistory: [],
+      status: 'JOINED',  // NEW: Always set status to JOINED
+      joinedAt: Date.now()
+    });
 
-    // Add player name if provided
-    if (playerName) {
-      if (!game.playerNames) game.playerNames = {};
-      game.playerNames[playerId] = playerName;
+    // 9. Build updated player lists
+    playerIds.push(playerId);
+    const playerNames = {};
+    const playerLocations = {};
+
+    for (const member of members) {
+      playerNames[member.uuid.id] = member.uuid.name;
+      if (member.uuid.custom?.playerLocation) {
+        try {
+          playerLocations[member.uuid.id] = JSON.parse(member.uuid.custom.playerLocation);
+        } catch (e) {}
+      }
     }
-
-    // Add player location if provided
+    playerNames[playerId] = playerName || playerId;
     if (location) {
-      if (!game.playerLocations) game.playerLocations = {};
-      game.playerLocations[playerId] = location;
+      playerLocations[playerId] = location;
     }
 
-    // Update game state
-    await storage.setGame(pubnub, gameId, game);
-
-    // Publish PLAYER_JOINED to admin channel
+    // 10. Publish PLAYER_JOINED to admin channel
     await pubnub.publish({
       channel: `admin.${gameId}`,
       message: {
@@ -376,13 +449,28 @@ async function joinGame(pubnub, body) {
         type: 'PLAYER_JOINED',
         gameId,
         playerId,
-        playerIds: game.playerIds,
-        playerNames: game.playerNames,
-        playerLocations: game.playerLocations
+        playerIds,
+        playerNames,
+        playerLocations
       }
     });
 
-    // Publish PLAYER_JOINED_GAME to lobby
+    // NEW: For invite-only games, publish INVITATION_ACCEPTED
+    if (gameMetadata.inviteOnly) {
+      await pubnub.publish({
+        channel: `admin.${gameId}`,
+        message: {
+          v: 1,
+          type: 'INVITATION_ACCEPTED',
+          gameId,
+          playerId,
+          playerName: playerName || playerId,
+          status: 'JOINED'
+        }
+      });
+    }
+
+    // 11. Publish PLAYER_JOINED_GAME to lobby
     await pubnub.publish({
       channel: 'lobby',
       message: {
@@ -390,9 +478,9 @@ async function joinGame(pubnub, body) {
         type: 'PLAYER_JOINED_GAME',
         gameId,
         playerId,
-        playerIds: game.playerIds,
-        playerNames: game.playerNames,
-        playerLocations: game.playerLocations
+        playerIds,
+        playerNames,
+        playerLocations
       }
     });
 
@@ -401,8 +489,8 @@ async function joinGame(pubnub, body) {
       body: {
         success: true,
         gameId,
-        phase: game.phase,
-        players: game.playerIds
+        phase: gameMetadata.phase,
+        players: playerIds
       }
     };
   } catch (error) {
@@ -410,6 +498,263 @@ async function joinGame(pubnub, body) {
     return {
       statusCode: 500,
       body: { error: 'Failed to join game' }
+    };
+  }
+}
+
+/**
+ * Invite player to private game (v3.0.0)
+ */
+async function invitePlayer(pubnub, body) {
+  const { gameId, hostPlayerId, targetPlayerId } = body;
+
+  console.log(`[invitePlayer] Host ${hostPlayerId} inviting ${targetPlayerId} to ${gameId}`);
+
+  if (!gameId || !hostPlayerId || !targetPlayerId) {
+    return {
+      statusCode: 400,
+      body: { error: 'Missing gameId, hostPlayerId, or targetPlayerId' }
+    };
+  }
+
+  try {
+    // 1. Validate game exists and is invite-only
+    const gameMetadata = await storage.getGameMetadata(pubnub, gameId);
+
+    if (!gameMetadata) {
+      return {
+        statusCode: 404,
+        body: { error: 'Game not found' }
+      };
+    }
+
+    if (!gameMetadata.inviteOnly) {
+      return {
+        statusCode: 400,
+        body: { error: 'Game is not invite-only' }
+      };
+    }
+
+    if (gameMetadata.phase !== 'CREATED') {
+      return {
+        statusCode: 400,
+        body: { error: 'Cannot invite players after game has started' }
+      };
+    }
+
+    // 2. Verify host is member with role="host"
+    const members = await storage.getGamePlayers(pubnub, gameId);
+    const hostMember = members.find(m => m.uuid.id === hostPlayerId);
+
+    if (!hostMember || hostMember.custom?.role !== 'host') {
+      return {
+        statusCode: 403,
+        body: { error: 'Only host can send invitations' }
+      };
+    }
+
+    // 3. Check if target player already has membership
+    const existingMembership = members.find(m => m.uuid.id === targetPlayerId);
+
+    if (existingMembership) {
+      const currentStatus = existingMembership.custom?.status;
+
+      // Cannot re-invite DENIED users (per requirements)
+      if (currentStatus === 'DENIED') {
+        return {
+          statusCode: 400,
+          body: { error: 'Cannot re-invite player who denied invitation' }
+        };
+      }
+
+      // If already INVITED or JOINED, return success (idempotent)
+      if (currentStatus === 'INVITED' || currentStatus === 'JOINED') {
+        return {
+          statusCode: 200,
+          body: {
+            success: true,
+            message: 'Player already invited or joined',
+            status: currentStatus
+          }
+        };
+      }
+    }
+
+    // 4. Get target player User metadata (for notification)
+    const targetPlayer = await storage.getPlayer(pubnub, targetPlayerId);
+
+    if (!targetPlayer) {
+      return {
+        statusCode: 404,
+        body: { error: 'Target player not found' }
+      };
+    }
+
+    // 5. Create membership with status="INVITED"
+    await storage.addPlayerToGame(pubnub, targetPlayerId, gameId, 'player', {
+      status: 'INVITED',
+      invitedAt: Date.now(),
+      invitedBy: hostPlayerId,
+      moveCount: 0,
+      positionsCorrect: 0,
+      finished: false,
+      finishTT: null,
+      placement: null,
+      currentOrder: null,
+      correctnessHistory: []
+    });
+
+    // 6. Publish invitation to target player's personal channel
+    await pubnub.publish({
+      channel: `user.${targetPlayerId}`,
+      message: {
+        v: 1,
+        type: 'GAME_INVITATION',
+        gameId,
+        gameName: gameMetadata.gameName || `Game ${gameId}`,
+        hostPlayerId,
+        hostName: hostMember.uuid.name,
+        tileCount: gameMetadata.tileCount,
+        emojiTheme: gameMetadata.emojiTheme,
+        maxPlayers: gameMetadata.maxPlayers,
+        invitedAt: Date.now()
+      }
+    });
+
+    // 7. Publish notification to admin channel (for host UI update)
+    await pubnub.publish({
+      channel: `admin.${gameId}`,
+      message: {
+        v: 1,
+        type: 'PLAYER_INVITED',
+        gameId,
+        playerId: targetPlayerId,
+        playerName: targetPlayer.name,
+        status: 'INVITED'
+      }
+    });
+
+    return {
+      statusCode: 200,
+      body: {
+        success: true,
+        targetPlayerId,
+        gameId,
+        status: 'INVITED'
+      }
+    };
+  } catch (error) {
+    console.error('[invitePlayer] Error:', error);
+    return {
+      statusCode: 500,
+      body: { error: 'Failed to send invitation', details: error.message }
+    };
+  }
+}
+
+/**
+ * Reject game invitation (v3.0.0)
+ */
+async function rejectInvitation(pubnub, body) {
+  const { gameId, playerId } = body;
+
+  console.log(`[rejectInvitation] Player ${playerId} rejecting invite to ${gameId}`);
+
+  if (!gameId || !playerId) {
+    return {
+      statusCode: 400,
+      body: { error: 'Missing gameId or playerId' }
+    };
+  }
+
+  try {
+    // 1. Get game metadata
+    const gameMetadata = await storage.getGameMetadata(pubnub, gameId);
+
+    if (!gameMetadata) {
+      return {
+        statusCode: 404,
+        body: { error: 'Game not found' }
+      };
+    }
+
+    if (gameMetadata.phase !== 'CREATED') {
+      return {
+        statusCode: 400,
+        body: { error: 'Game already started' }
+      };
+    }
+
+    // 2. Get player's membership
+    const members = await storage.getGamePlayers(pubnub, gameId);
+    const membership = members.find(m => m.uuid.id === playerId);
+
+    if (!membership) {
+      return {
+        statusCode: 404,
+        body: { error: 'No invitation found' }
+      };
+    }
+
+    const currentStatus = membership.custom?.status;
+
+    if (currentStatus === 'DENIED') {
+      // Already denied - idempotent
+      return {
+        statusCode: 200,
+        body: { success: true, message: 'Already denied' }
+      };
+    }
+
+    if (currentStatus === 'JOINED') {
+      return {
+        statusCode: 400,
+        body: { error: 'Cannot reject after joining' }
+      };
+    }
+
+    // 3. Update membership status to DENIED
+    await pubnub.objects.setMemberships({
+      uuid: playerId,
+      channels: [{
+        id: `game.${gameId}`,
+        custom: {
+          ...membership.custom,
+          status: 'DENIED',
+          deniedAt: Date.now()
+        }
+      }]
+    });
+
+    // 4. Get player name for notification
+    const player = await storage.getPlayer(pubnub, playerId);
+
+    // 5. Publish notification to admin channel (host sees update)
+    await pubnub.publish({
+      channel: `admin.${gameId}`,
+      message: {
+        v: 1,
+        type: 'INVITATION_DENIED',
+        gameId,
+        playerId,
+        playerName: player?.name || 'Unknown',
+        status: 'DENIED'
+      }
+    });
+
+    return {
+      statusCode: 200,
+      body: {
+        success: true,
+        gameId,
+        status: 'DENIED'
+      }
+    };
+  } catch (error) {
+    console.error('[rejectInvitation] Error:', error);
+    return {
+      statusCode: 500,
+      body: { error: 'Failed to reject invitation', details: error.message }
     };
   }
 }
@@ -428,63 +773,109 @@ async function startGame(pubnub, body) {
   }
 
   try {
-    // Get game state
-    const game = await storage.getGame(pubnub, gameId);
+    // 1. Get game metadata
+    const gameMetadata = await storage.getGameMetadata(pubnub, gameId);
 
-    if (!game) {
+    if (!gameMetadata) {
       return {
         statusCode: 404,
         body: { error: 'Game not found' }
       };
     }
 
-    // Only the host (first player) can start the game
-    if (game.playerIds[0] !== playerId) {
+    // 2. Get members to check host and phase
+    const members = await storage.getGamePlayers(pubnub, gameId);
+    const playerIds = members.map(m => m.uuid.id);
+
+    // 3. Only the host (first member with role='host') can start the game
+    const hostMember = members.find(m => m.custom?.role === 'host');
+    if (!hostMember || hostMember.uuid.id !== playerId) {
       return {
         statusCode: 403,
         body: { error: 'Only the host can start the game' }
       };
     }
 
-    // Can only start from CREATED phase
-    if (game.phase !== 'CREATED') {
+    // 4. Can only start from CREATED phase
+    if (gameMetadata.phase !== 'CREATED') {
       return {
         statusCode: 403,
         body: { error: 'Game already started or finished' }
       };
     }
 
-    // Generate emoji tiles from theme
-    const emojis = selectEmojisFromTheme(game.emojiTheme, game.tileCount);
+    // 5. Generate emoji tiles from theme
+    const emojis = selectEmojisFromTheme(gameMetadata.emojiTheme, gameMetadata.tileCount);
     const tiles = {};
-    for (let i = 0; i < game.tileCount; i++) {
+    for (let i = 0; i < gameMetadata.tileCount; i++) {
       tiles[i.toString()] = emojis[i];
     }
 
-    // Generate goal order
-    const goalOrder = generateGoalOrder(game.tileCount);
+    // 6. Generate goal order
+    const goalOrder = generateGoalOrder(gameMetadata.tileCount);
 
-    // Generate initial order with 0 positions correct
-    const initialOrder = generateInitialOrder(goalOrder, game.tileCount);
+    // 7. Generate initial order with 0 positions correct
+    const initialOrder = generateInitialOrder(goalOrder, gameMetadata.tileCount);
 
-    // Update game state
-    game.tiles = tiles;
-    game.goalOrder = goalOrder;
-    game.initialOrder = initialOrder;
-    game.phase = 'LIVE';
-    game.startTT = Date.now();
+    const startTT = Date.now();
 
-    // Initialize all players with initial order
-    for (const pid of game.playerIds) {
-      game.players[pid].currentOrder = { ...initialOrder };
-      game.players[pid].correctnessHistory = [0];
-      game.players[pid].positionsCorrect = 0;
+    // 8. Update Channel metadata with tiles, orders, and phase
+    await storage.setGameMetadata(pubnub, gameId, {
+      ...gameMetadata,
+      tiles,
+      goalOrder,
+      initialOrder,
+      phase: 'LIVE',
+      startTT
+    });
+
+    // 8.5. For invite-only games, remove INVITED and DENIED members before starting
+    if (gameMetadata.inviteOnly) {
+      console.log(`[startGame] Cleaning up INVITED/DENIED members for invite-only game ${gameId}`);
+
+      for (const member of members) {
+        const status = member.custom?.status;
+
+        if (status === 'INVITED' || status === 'DENIED') {
+          console.log(`[startGame] Removing ${status} member ${member.uuid.id}`);
+
+          await storage.removePlayerFromGame(pubnub, member.uuid.id, gameId);
+
+          // Notify admin channel
+          await pubnub.publish({
+            channel: `admin.${gameId}`,
+            message: {
+              v: 1,
+              type: 'PLAYER_REMOVED',
+              gameId,
+              playerId: member.uuid.id,
+              reason: `${status} invitation`
+            }
+          });
+        }
+      }
+
+      // Refresh the members list after cleanup for player initialization
+      const updatedMembers = await storage.getGamePlayers(pubnub, gameId);
+      const updatedPlayerIds = updatedMembers.map(m => m.uuid.id);
+
+      // Update playerIds array for the next step
+      playerIds.length = 0;
+      playerIds.push(...updatedPlayerIds);
     }
 
-    // Update storage
-    await storage.setGame(pubnub, gameId, game);
+    // 9. Initialize each player's currentOrder and correctnessHistory in User objects
+    for (const playerId of playerIds) {
+      const playerGameState = await storage.getPlayerGameState(pubnub, playerId, gameId);
+      await storage.setPlayerGameState(pubnub, playerId, gameId, {
+        ...playerGameState,
+        currentOrder: { ...initialOrder },
+        correctnessHistory: [0],
+        positionsCorrect: 0
+      });
+    }
 
-    // Publish GAME_STARTED to admin channel
+    // 10. Publish GAME_STARTED to admin channel
     await pubnub.publish({
       channel: `admin.${gameId}`,
       message: {
@@ -494,19 +885,79 @@ async function startGame(pubnub, body) {
         tiles,
         goalOrder,
         initialOrder,
-        tilePinningEnabled: game.tilePinningEnabled || false,
-        verifiedPositionsEnabled: game.verifiedPositionsEnabled || false,
-        startTT: game.startTT
+        tilePinningEnabled: gameMetadata.tilePinningEnabled || false,
+        verifiedPositionsEnabled: gameMetadata.verifiedPositionsEnabled || false,
+        startTT
       }
     });
 
-    // Publish GAME_STARTED to lobby (removes from list)
+    // 11. Publish GAME_STARTED to lobby (removes from list)
     await pubnub.publish({
       channel: 'lobby',
       message: {
         v: 1,
         type: 'GAME_STARTED',
         gameId
+      }
+    });
+
+    // 12. Server-side countdown sequence
+    const adminChannel = `admin.${gameId}`;
+
+    // Wait 500ms to ensure all players are subscribed to admin channel
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Publish countdown: 3
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'COUNTDOWN',
+        gameId: gameId,
+        countdown: 3,
+        tiles: tiles,
+        initialOrder: initialOrder
+      }
+    });
+
+    // Wait 1 second, then publish: 2
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'COUNTDOWN',
+        gameId: gameId,
+        countdown: 2
+      }
+    });
+
+    // Wait 1 second, then publish: 1
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'COUNTDOWN',
+        gameId: gameId,
+        countdown: 1
+      }
+    });
+
+    // Wait 1 second, then publish GAME_START
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await pubnub.publish({
+      channel: adminChannel,
+      message: {
+        v: 1,
+        type: 'GAME_START',
+        gameId: gameId,
+        phase: 'LIVE',
+        tiles: tiles,
+        initialOrder: initialOrder,
+        goalOrder: goalOrder,
+        tilePinningEnabled: gameMetadata.tilePinningEnabled || false,
+        verifiedPositionsEnabled: gameMetadata.verifiedPositionsEnabled || false
       }
     });
 
@@ -562,11 +1013,13 @@ async function getGame(pubnub, body) {
         phase: game.phase,
         playerIds: game.playerIds,
         playerNames: game.playerNames || {},
+        playerLocations: game.playerLocations || {},
         maxPlayers: game.maxPlayers || 10,
         tileCount: game.tileCount || 4,
         emojiTheme: game.emojiTheme || 'food',
         tilePinningEnabled: game.tilePinningEnabled || false,
         verifiedPositionsEnabled: game.verifiedPositionsEnabled || false,
+        inviteOnly: game.inviteOnly || false,
         tiles: game.tiles,
         goalOrder: game.goalOrder,
         initialOrder: game.initialOrder
@@ -621,45 +1074,79 @@ async function leaveGame(pubnub, body) {
   }
 
   try {
-    const game = await storage.getGame(pubnub, gameId);
+    // 1. Get game metadata
+    const gameMetadata = await storage.getGameMetadata(pubnub, gameId);
 
-    if (!game) {
+    if (!gameMetadata) {
+      // Game doesn't exist - player is already not in it, so treat as success
+      console.log(`[leaveGame] Game ${gameId} not found - already deleted`);
+
+      // Clean up any orphaned player state/membership just in case
+      try {
+        await storage.deletePlayerGameState(pubnub, playerId, gameId);
+        await storage.removePlayerFromGame(pubnub, playerId, gameId);
+      } catch (cleanupError) {
+        console.log('[leaveGame] Cleanup error (non-fatal):', cleanupError.message);
+      }
+
       return {
-        statusCode: 404,
-        body: { error: 'Game not found' }
+        statusCode: 200,
+        body: {
+          success: true,
+          message: 'Game already deleted'
+        }
       };
     }
 
-    // Check if player is in game
-    if (!game.playerIds.includes(playerId)) {
+    // 2. Get members
+    const members = await storage.getGamePlayers(pubnub, gameId);
+    const playerIds = members.map(m => m.uuid.id);
+
+    // 3. Check if player is in game
+    if (!playerIds.includes(playerId)) {
       return {
         statusCode: 404,
         body: { error: 'Player not in game' }
       };
     }
 
-    // Check if leaving player is the host (first player)
-    const isHost = game.playerIds[0] === playerId;
+    // 4. Check if leaving player is the host
+    const leavingMember = members.find(m => m.uuid.id === playerId);
+    const isHost = leavingMember?.custom?.role === 'host';
 
     // Handle LIVE/OVER phase separately
-    if (game.phase === 'LIVE' || game.phase === 'OVER') {
-      // If host is leaving during live game, end the game for everyone
+    if (gameMetadata.phase === 'LIVE' || gameMetadata.phase === 'OVER') {
+      // If host is leaving during live/over game, delete the game entirely (per requirements)
       if (isHost) {
-        // Update game phase to OVER
-        game.phase = 'OVER';
-        game.endTT = Date.now().toString();
-        game.hostLeftTT = game.endTT;
+        console.log(`[leaveGame] Host ${playerId} leaving game ${gameId} during ${gameMetadata.phase} - deleting game`);
 
-        await storage.setGame(pubnub, gameId, game);
+        // Delete Channel metadata
+        await storage.deleteGame(pubnub, gameId);
 
-        // Notify all players that host ended the game
+        // Delete all member game states and memberships
+        for (const member of members) {
+          await storage.deletePlayerGameState(pubnub, member.uuid.id, gameId);
+          await storage.removePlayerFromGame(pubnub, member.uuid.id, gameId);
+        }
+
+        // Notify all players that host deleted the game
         await pubnub.publish({
           channel: `admin.${gameId}`,
           message: {
             v: 1,
-            type: 'HOST_LEFT',
+            type: 'GAME_DELETED',
             gameId,
-            message: 'The host has left and ended the game.'
+            reason: 'Host left and deleted the game'
+          }
+        });
+
+        // Publish GAME_DELETED to lobby (if game was visible there)
+        await pubnub.publish({
+          channel: 'lobby',
+          message: {
+            v: 1,
+            type: 'GAME_DELETED',
+            gameId
           }
         });
 
@@ -667,38 +1154,64 @@ async function leaveGame(pubnub, body) {
           statusCode: 200,
           body: {
             success: true,
-            message: 'Game ended (host left)'
+            gameDeleted: true,
+            message: 'Game deleted (host left)'
           }
         };
       } else {
         // Non-host player leaving during live game
-        // Remove player from game
-        delete game.players[playerId];
-        game.playerIds = game.playerIds.filter(pid => pid !== playerId);
+        // 7. Remove player membership
+        await storage.removePlayerFromGame(pubnub, playerId, gameId);
 
-        if (game.playerNames && game.playerNames[playerId]) {
-          delete game.playerNames[playerId];
+        // 8. Delete player game state
+        await storage.deletePlayerGameState(pubnub, playerId, gameId);
+
+        // 9. Get updated member count
+        const remainingMembers = await storage.getGamePlayers(pubnub, gameId);
+        const remainingPlayerIds = remainingMembers.map(m => m.uuid.id);
+
+        // 10. Check if we need to adjust placements
+        const remainingPlayers = remainingPlayerIds.length;
+
+        // Get finished players count from User objects
+        let finishedPlayers = 0;
+        for (const member of remainingMembers) {
+          const playerGameState = await storage.getPlayerGameState(pubnub, member.uuid.id, gameId);
+          if (playerGameState.finished) {
+            finishedPlayers++;
+          }
         }
-
-        if (game.playerLocations && game.playerLocations[playerId]) {
-          delete game.playerLocations[playerId];
-        }
-
-        // Check if we need to adjust placements
-        const remainingPlayers = game.playerIds.length;
-        const finishedPlayers = game.placements?.length || 0;
 
         // If remaining + finished < placementCount, we may need to end the game
-        if ((remainingPlayers + finishedPlayers) < game.placementCount) {
-          // Adjust effective placement count
-          game.placementCount = Math.max(1, remainingPlayers + finishedPlayers);
+        if ((remainingPlayers + finishedPlayers) < gameMetadata.placementCount) {
+          const newPlacementCount = Math.max(1, remainingPlayers + finishedPlayers);
 
           // Check if game should end now
-          if (finishedPlayers >= game.placementCount) {
-            game.phase = 'OVER';
-            game.endTT = Date.now().toString();
+          if (finishedPlayers >= newPlacementCount) {
+            const endTT = Date.now();
 
-            await storage.setGame(pubnub, gameId, game);
+            await storage.setGameMetadata(pubnub, gameId, {
+              ...gameMetadata,
+              placementCount: newPlacementCount,
+              phase: 'OVER',
+              endTT
+            });
+
+            // Reconstruct placements from User objects
+            const placements = [];
+            for (const member of remainingMembers) {
+              const playerGameState = await storage.getPlayerGameState(pubnub, member.uuid.id, gameId);
+              if (playerGameState.finished && playerGameState.placement) {
+                placements.push({
+                  playerId: member.uuid.id,
+                  playerName: member.uuid.name,
+                  placement: playerGameState.placement,
+                  finishTT: playerGameState.finishTT,
+                  moveCount: playerGameState.moveCount
+                });
+              }
+            }
+            placements.sort((a, b) => a.placement - b.placement);
 
             // Publish GAME_OVER
             await pubnub.publish({
@@ -708,13 +1221,13 @@ async function leaveGame(pubnub, body) {
                 type: 'GAME_OVER',
                 gameId,
                 phase: 'OVER',
-                placements: game.placements,
-                goalOrder: game.goalOrder,
-                endTT: game.endTT,
+                placements,
+                goalOrder: gameMetadata.goalOrder,
+                endTT,
                 // Backward compatibility
-                winnerPlayerId: game.winnerPlayerId,
-                winnerName: game.winnerName,
-                winTT: game.winTT
+                winnerPlayerId: gameMetadata.winnerPlayerId,
+                winnerName: gameMetadata.winnerName,
+                winTT: gameMetadata.winTT
               }
             });
 
@@ -726,9 +1239,19 @@ async function leaveGame(pubnub, body) {
               }
             };
           }
+
+          // Update placement count
+          await storage.setGameMetadata(pubnub, gameId, {
+            ...gameMetadata,
+            placementCount: newPlacementCount
+          });
         }
 
-        await storage.setGame(pubnub, gameId, game);
+        // Build playerNames for notification
+        const playerNames = {};
+        remainingMembers.forEach(m => {
+          playerNames[m.uuid.id] = m.uuid.name;
+        });
 
         // Notify all remaining players
         await pubnub.publish({
@@ -738,9 +1261,9 @@ async function leaveGame(pubnub, body) {
             type: 'PLAYER_LEFT',
             gameId,
             playerId,
-            playerName: game.playerNames?.[playerId] || `Player ${playerId.slice(-4)}`,
-            playerIds: game.playerIds,
-            playerNames: game.playerNames
+            playerName: leavingMember.uuid.name || `Player ${playerId.slice(-4)}`,
+            playerIds: remainingPlayerIds,
+            playerNames
           }
         });
 
@@ -754,31 +1277,30 @@ async function leaveGame(pubnub, body) {
       }
     }
 
-    // Handle CREATED phase (existing logic)
-    if (game.phase !== 'CREATED') {
+    // Handle CREATED phase
+    if (gameMetadata.phase !== 'CREATED') {
       return {
         statusCode: 403,
         body: { error: 'Cannot leave game in this phase' }
       };
     }
 
-    // If host is leaving and there are other players, cancel the game
-    if (isHost && game.playerIds.length > 1) {
-      // Delete game
-      await storage.deleteGame(pubnub, gameId);
+    // If host is leaving during CREATED phase, delete the game (regardless of player count)
+    if (isHost) {
+      console.log(`[leaveGame] Host ${playerId} leaving game ${gameId} before start - deleting game`);
 
-      // Publish GAME_CANCELED to admin channel
+      // IMPORTANT: Publish GAME_DELETED messages BEFORE removing memberships
+      // so all players receive the notification
       await pubnub.publish({
         channel: `admin.${gameId}`,
         message: {
           v: 1,
-          type: 'GAME_CANCELED',
+          type: 'GAME_DELETED',
           gameId,
-          reason: 'The host has left and canceled the game.'
+          reason: 'Host left before start'
         }
       });
 
-      // Publish GAME_DELETED to lobby
       await pubnub.publish({
         channel: 'lobby',
         message: {
@@ -788,29 +1310,36 @@ async function leaveGame(pubnub, body) {
         }
       });
 
+      // Delete Channel metadata
+      await storage.deleteGame(pubnub, gameId);
+
+      // Delete all member game states and memberships
+      for (const member of members) {
+        await storage.deletePlayerGameState(pubnub, member.uuid.id, gameId);
+        await storage.removePlayerFromGame(pubnub, member.uuid.id, gameId);
+      }
+
       return {
         statusCode: 200,
         body: {
           success: true,
-          message: 'Game canceled (host left)'
+          gameDeleted: true,
+          message: 'Game deleted (host left before start)'
         }
       };
     }
 
-    // Remove player from game
-    delete game.players[playerId];
-    game.playerIds = game.playerIds.filter(pid => pid !== playerId);
+    // Remove player membership
+    await storage.removePlayerFromGame(pubnub, playerId, gameId);
 
-    if (game.playerNames && game.playerNames[playerId]) {
-      delete game.playerNames[playerId];
-    }
+    // Delete player game state
+    await storage.deletePlayerGameState(pubnub, playerId, gameId);
 
-    if (game.playerLocations && game.playerLocations[playerId]) {
-      delete game.playerLocations[playerId];
-    }
+    // Get remaining members
+    const remainingMembers = await storage.getGamePlayers(pubnub, gameId);
 
     // If no players left, delete game
-    if (game.playerIds.length === 0) {
+    if (remainingMembers.length === 0) {
       await storage.deleteGame(pubnub, gameId);
 
       // Publish GAME_DELETED to lobby
@@ -832,8 +1361,12 @@ async function leaveGame(pubnub, body) {
       };
     }
 
-    // Update game
-    await storage.setGame(pubnub, gameId, game);
+    // Build updated player lists
+    const remainingPlayerIds = remainingMembers.map(m => m.uuid.id);
+    const playerNames = {};
+    remainingMembers.forEach(m => {
+      playerNames[m.uuid.id] = m.uuid.name;
+    });
 
     // Publish PLAYER_LEFT to admin channel
     await pubnub.publish({
@@ -843,8 +1376,8 @@ async function leaveGame(pubnub, body) {
         type: 'PLAYER_LEFT',
         gameId,
         playerId,
-        playerIds: game.playerIds,
-        playerNames: game.playerNames
+        playerIds: remainingPlayerIds,
+        playerNames
       }
     });
 
@@ -856,8 +1389,8 @@ async function leaveGame(pubnub, body) {
         type: 'PLAYER_LEFT_GAME',
         gameId,
         playerId,
-        playerIds: game.playerIds,
-        playerNames: game.playerNames
+        playerIds: remainingPlayerIds,
+        playerNames
       }
     });
 
@@ -866,7 +1399,7 @@ async function leaveGame(pubnub, body) {
       body: {
         success: true,
         gameId,
-        playerIds: game.playerIds
+        playerIds: remainingPlayerIds
       }
     };
   } catch (error) {
@@ -899,41 +1432,50 @@ async function updateGameName(pubnub, body) {
   }
 
   try {
-    const game = await storage.getGame(pubnub, gameId);
+    // 1. Get game metadata
+    const gameMetadata = await storage.getGameMetadata(pubnub, gameId);
 
-    if (!game) {
+    if (!gameMetadata) {
       return {
         statusCode: 404,
         body: { error: 'Game not found' }
       };
     }
 
-    if (game.phase !== 'CREATED') {
+    // 2. Check phase
+    if (gameMetadata.phase !== 'CREATED') {
       return {
         statusCode: 403,
         body: { error: 'Cannot edit name after game started' }
       };
     }
 
-    if (game.playerIds[0] !== playerId) {
+    // 3. Get members to check host
+    const members = await storage.getGamePlayers(pubnub, gameId);
+    const hostMember = members.find(m => m.custom?.role === 'host');
+
+    if (!hostMember || hostMember.uuid.id !== playerId) {
       return {
         statusCode: 403,
         body: { error: 'Only host can edit game name' }
       };
     }
 
-    game.gameName = gameName.trim();
+    // 4. Update game name
+    const trimmedName = gameName.trim();
+    await storage.setGameMetadata(pubnub, gameId, {
+      ...gameMetadata,
+      gameName: trimmedName
+    });
 
-    await storage.setGame(pubnub, gameId, game);
-
-    // Publish update to lobby
+    // 5. Publish update to lobby
     await pubnub.publish({
       channel: 'lobby',
       message: {
         v: 1,
         type: 'GAME_NAME_UPDATED',
         gameId,
-        gameName: game.gameName
+        gameName: trimmedName
       }
     });
 
@@ -941,7 +1483,7 @@ async function updateGameName(pubnub, body) {
       statusCode: 200,
       body: {
         success: true,
-        gameName: game.gameName
+        gameName: trimmedName
       }
     };
   } catch (error) {

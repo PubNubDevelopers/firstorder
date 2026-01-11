@@ -14,15 +14,20 @@ export default function ConfirmDialog({
 }) {
   if (!isOpen) return null;
 
+  // If no cancel button, don't allow clicking overlay to close
+  const handleOverlayClick = cancelText ? onCancel : undefined;
+
   return (
-    <div className="confirm-dialog-overlay" onClick={onCancel}>
+    <div className="confirm-dialog-overlay" onClick={handleOverlayClick}>
       <div className="confirm-dialog-content" onClick={(e) => e.stopPropagation()}>
         <h2 className="confirm-dialog-title">{title}</h2>
         <p className="confirm-dialog-message">{message}</p>
         <div className="confirm-dialog-buttons">
-          <button className="cancel-button" onClick={onCancel}>
-            {cancelText}
-          </button>
+          {cancelText && (
+            <button className="cancel-button" onClick={onCancel}>
+              {cancelText}
+            </button>
+          )}
           <button className="confirm-button" onClick={onConfirm}>
             {confirmText}
           </button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getOrCreatePlayerUUID, savePlayerName, getPlayerName, savePlayerLocation } from '../utils/playerStorage';
-import { fetchPlayerLocation } from '../utils/geolocation';
+import { fetchIPLocation } from '../utils/geolocation';
 
 /**
  * Registration component - first page every player sees
@@ -34,9 +34,10 @@ export default function Registration({ onRegister }) {
     setLoading(true);
 
     try {
-      // Fetch location in background
-      const location = await fetchPlayerLocation();
+      // Fetch location via IP geolocation
+      const location = await fetchIPLocation();
       if (location) {
+        console.log('[Registration] Fetched location:', location);
         savePlayerLocation(location);
       }
 
@@ -49,6 +50,7 @@ export default function Registration({ onRegister }) {
         playerName: playerName.trim()
       });
     } catch (err) {
+      console.error('[Registration] Error:', err);
       setError('Failed to enter lobby');
       setLoading(false);
     }
@@ -57,7 +59,7 @@ export default function Registration({ onRegister }) {
   return (
     <div className="registration">
       <h1>First Order</h1>
-      <p className="game-info">A multiplayer tile-swapping race game</p>
+      <p className="game-info">A real-time multiplayer puzzle race where players swap tiles to reach the correct order faster than their opponents.</p>
 
       {error && <div className="error-message">{error}</div>}
 
