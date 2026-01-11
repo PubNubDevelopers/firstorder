@@ -1,6 +1,6 @@
 {
   "name": "swapit",
-  "version": "1.0.0",
+  "version": "3.1.4",
   "main": "index.js",
   "scripts": {
     "dev": "netlify dev",

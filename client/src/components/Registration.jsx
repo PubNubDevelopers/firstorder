@@ -59,7 +59,7 @@ export default function Registration({ onRegister }) {
   return (
     <div className="registration">
       <h1>First Order</h1>
-      <p className="game-info">A multiplayer tile-swapping race game</p>
+      <p className="game-info">A real-time multiplayer puzzle race where players swap tiles to reach the correct order faster than their opponents.</p>
 
       {error && <div className="error-message">{error}</div>}
 

@@ -3,6 +3,7 @@ import Registration from './components/Registration';
 import LobbyV2 from './components/LobbyV2';
 import Game from './components/Game';
 import GamesHistory from './components/GamesHistory';
+import VersionCheck from './components/VersionCheck';
 import { APP_VERSION } from './version';
 
 /**
@@ -50,6 +51,8 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Version Check Banner */}
+      <VersionCheck />
 
       {appState === 'REGISTRATION' && (
         <Registration onRegister={handleRegister} />

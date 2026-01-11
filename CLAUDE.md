@@ -123,26 +123,58 @@ const pubnubConfig = {
 };
 ```
 
-### 2. useEffect Dependencies for Real-Time Updates
+### 2. Subscribe Returns a Promise
 
-**Pattern**: Query once on mount, update via subscriptions:
+**CRITICAL**: The `subscribe()` function in `usePubNub.js` returns a Promise that resolves to the unsubscribe function.
+
+**Correct usage:**
 ```javascript
-// LobbyV2.jsx / Lobby.jsx pattern
-const fetchGameList = useCallback(async () => {
-  const result = await listGames(pubnub);
-  setAvailableGames(result.games);
-}, [pubnub]);
-
 useEffect(() => {
   if (!isConnected) return;
 
-  // Subscribe to real-time events
-  const unsubscribeLobby = subscribe('lobby', handleMessage);
+  let unsubscribe;
 
-  // Initial query (only runs once)
-  fetchGameList();
+  (async () => {
+    // MUST await subscribe() to get the unsubscribe function
+    unsubscribe = await subscribe('channel', handleMessage);
+  })();
 
-  return () => unsubscribeLobby();
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, [isConnected, subscribe]);
+```
+
+**Wrong usage (causes "X is not a function" errors):**
+```javascript
+useEffect(() => {
+  // ❌ WRONG - assigns Promise, not function
+  const unsubscribe = subscribe('channel', handleMessage);
+
+  return () => {
+    unsubscribe(); // Error: Promise is not a function
+  };
+}, [isConnected, subscribe]);
+```
+
+### 3. useEffect Dependencies for Real-Time Updates
+
+**Pattern**: Query once on mount, update via subscriptions:
+```javascript
+// LobbyV2.jsx pattern with async subscribe
+useEffect(() => {
+  if (!isConnected) return;
+
+  let unsubscribeLobby;
+
+  (async () => {
+    unsubscribeLobby = await subscribe('lobby', handleMessage);
+    await fetchGameList();
+  })();
+
+  return () => {
+    if (unsubscribeLobby) unsubscribeLobby();
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [isConnected]);
 ```
@@ -154,7 +186,7 @@ useEffect(() => {
 - Solution: Only depend on `isConnected`, use stable closures for functions
 - Use `eslint-disable-next-line` to suppress exhaustive-deps warning
 
-### 3. Client vs Backend Responsibilities
+### 4. Client vs Backend Responsibilities
 
 **Client** (direct PubNub queries):
 - List games with `listGames(pubnub)` in `gameApi.js`
@@ -166,7 +198,7 @@ useEffect(() => {
 - All game state mutations
 - Never queries App Context (causes timeouts)
 
-### 4. Vite Environment Variables
+### 5. Vite Environment Variables
 
 Only variables prefixed with `VITE_` are included in the client build:
 - Client: `VITE_PUBNUB_PUBLISH_KEY`, `VITE_PUBNUB_SUBSCRIBE_KEY`
@@ -199,6 +231,30 @@ App.jsx (root)
     ├── GameOverModal.jsx
     └── HelpModal.jsx
 ```
+
+---
+
+## Debugging and Error Investigation
+
+### Non-Minified Builds for Debugging
+
+**CRITICAL**: Always use non-minified builds when investigating errors.
+
+When debugging production errors:
+1. Update `client/vite.config.js` to disable minification:
+```javascript
+build: {
+  outDir: 'dist',
+  minify: false,
+  sourcemap: true
+}
+```
+2. Clean build artifacts: `rm -rf client/dist client/node_modules/.vite`
+3. Deploy with debugging enabled
+4. Investigate with readable stack traces and function names
+5. Once fixed, re-enable minification for production
+
+**Why**: Minified errors like "Re is not a function at index-ABC123.js:174:9345" are impossible to debug. Unminified builds provide readable function names and accurate line numbers.
 
 ---
 

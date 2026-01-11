@@ -1311,16 +1311,55 @@ input:focus {
   background: #f9f9f9;
   border-radius: 16px;
   padding: 32px;
-  max-width: 500px;
+  max-width: 800px;
   width: 90%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-height: 90vh;
+  max-height: 85vh;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .create-game-modal h2 {
   margin-bottom: 24px;
   color: #c71929;
+}
+
+/* Create Game Modal Layout */
+.create-game-modal .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-bottom: 24px;
+  padding-right: 8px;
+}
+
+.create-game-modal .modal-footer {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: #f9f9f9;
+  padding-top: 16px;
+  border-top: 2px solid #e0e0e0;
+  margin: 0 -32px -32px -32px;
+  padding: 16px 32px 0 32px;
+}
+
+.create-game-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.form-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.full-width-section {
+  grid-column: 1 / -1;
 }
 
 .form-group {
@@ -1357,6 +1396,54 @@ input:focus {
 .form-group input,
 .form-group select {
   width: 100%;
+}
+
+/* Styled input and select elements */
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group select,
+.styled-input,
+.styled-select {
+  height: 40px;
+  padding: 8px 12px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: #f9f9f9;
+  color: #171717;
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.form-group input[type="text"]:hover,
+.form-group input[type="number"]:hover,
+.form-group select:hover,
+.styled-input:hover,
+.styled-select:hover {
+  border-color: #528dfa;
+  background: #ffffff;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group select:focus,
+.styled-input:focus,
+.styled-select:focus {
+  outline: none;
+  border-color: #c71929;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(199, 25, 41, 0.1);
+}
+
+.form-group input[type="text"]:disabled,
+.form-group input[type="number"]:disabled,
+.form-group select:disabled,
+.styled-input:disabled,
+.styled-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f9f9f9;
 }
 
 .form-group .hint {
@@ -1491,7 +1578,7 @@ input:focus {
   font-weight: 400;
   padding: 2px 0;
   margin-bottom: 0;
-  margin-left: 132px;
+  margin-left: 0;
 }
 
 .radio-label input[type="radio"] {
@@ -2320,19 +2407,23 @@ input:focus {
   transform: translateX(-50%);
   text-align: center;
   font-size: 14px;
-  color: #999;
+  color: #ffffff;
   z-index: 10;
+  background: #528dfa;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(82, 141, 250, 0.3);
 }
 
 .pubnub-credits a {
-  color: #c71929;
+  color: #ffffff;
   text-decoration: none;
   font-weight: 600;
-  transition: color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .pubnub-credits a:hover {
-  color: #c71929;
+  color: #f0f0f0;
   text-decoration: underline;
 }
 
@@ -2387,4 +2478,32 @@ input:focus {
   font-weight: 700;
   color: #528dfa;
   font-size: 16px;
+}
+
+/* Responsive breakpoints for Create Game Modal */
+@media (max-width: 900px) {
+  .modal-content {
+    max-width: 600px;
+  }
+
+  .create-game-form-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .full-width-section {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-content {
+    max-width: 95%;
+    padding: 24px;
+  }
+
+  .create-game-modal .modal-footer {
+    margin: 0 -24px -24px -24px;
+    padding: 16px 24px 0 24px;
+  }
 }

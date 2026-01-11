@@ -34,7 +34,8 @@ export async function createGame(playerId, playerName, options, location) {
         maxPlayers: options.maxPlayers || 1,
         gameName: options.gameName || null,
         tilePinningEnabled: options.tilePinningEnabled || false,
-        verifiedPositionsEnabled: options.verifiedPositionsEnabled || false
+        verifiedPositionsEnabled: options.verifiedPositionsEnabled || false,
+        inviteOnly: options.inviteOnly || false
       },
       location: location || null
     }),
@@ -195,7 +196,9 @@ export async function listGames(pubnub) {
       // Filter for game channels (already filtered to CREATED by server)
       if (response.data) {
         for (const channel of response.data) {
-          if (channel.id.startsWith('game.') && channel.custom) {
+          // Only process game channels - ensure channel.id is a string
+          if (!channel.id || typeof channel.id !== 'string' || !channel.id.startsWith('game.')) continue;
+          if (channel.custom) {
             const custom = channel.custom;
 
             // v3.0.0: Read from individual custom fields (not gameState JSON)
@@ -241,7 +244,8 @@ export async function listGames(pubnub) {
                   playerNames,
                   playerLocations,
                   playerCount: members.length,
-                  createdAt: custom.createdAt
+                  createdAt: custom.createdAt,
+                  inviteOnly: custom.inviteOnly || false // NEW: Include invite-only flag
                 });
               } catch (memberError) {
                 console.error('[listGames] Error fetching members for', gameId, ':', memberError);

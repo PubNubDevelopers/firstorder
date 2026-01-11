@@ -5,6 +5,180 @@ All notable changes to First Order will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.3] - 2026-01-10
+
+### Fixed
+
+- **CRITICAL: Fixed data structure mismatch in formattedLobbyPlayers - THE ACTUAL BUG**
+  - **The Problem**: ALL previous fixes (v3.2.4 - v3.3.2) had correct data flow but UI still showed "Anonymous"
+  - **Root Cause**: Data structure mismatch in LobbyV2.jsx line 723-727
+    - `lobbyPlayers` array already had FLAT structure: `{uuid, playerName, location}`
+    - `formattedLobbyPlayers` was looking for NESTED structure: `occupant.state?.playerName`
+    - Since `occupant.state` doesn't exist on flat objects, it fell back to 'Anonymous'
+  - **The Fix**: Changed line 725 from `occupant.state?.playerName` to `occupant.playerName`
+  - **Evidence**: Console logs showed correct data:
+    ```
+    [Lobby] Filtered occupants: [
+      {"playerName": "Sandy", "location": "USA - CA"},
+      {"playerName": "Alexandra", "location": "USA - CA"}
+    ]
+    ```
+    But `formattedLobbyPlayers` was accessing wrong path and always falling back to 'Anonymous'
+  - **Why Previous Fixes Didn't Work**:
+    - v3.2.4-v3.3.2: All fixed the data FLOW (correct)
+    - But this formatting bug was AFTER all the correct data was in state
+    - The bug was in the LAST step before rendering
+  - **Files Changed**:
+    - `LobbyV2.jsx:725` - Changed `occupant.state?.playerName` → `occupant.playerName`
+    - Added debug logging to `PlayerName.jsx` and `PresenceList.jsx` to trace data flow
+  - **Testing**: Verified console logs show correct data flow end-to-end
+
+## [3.3.2] - 2026-01-10
+
+### Fixed
+
+- **CRITICAL: Fixed presence event handling - IGNORE join events, ONLY use state-change events**
+  - **The Problem**: All previous fixes (v3.2.4 - v3.3.1) were incomplete - "Anonymous" still appearing
+  - **Root Cause**: Wrong understanding of PubNub presence event flow
+    - When player subscribes, PubNub sends `join` event FIRST (with NO state)
+    - We were adding players on `join` event → "Unknown" player added
+    - THEN setState() is called
+    - THEN PubNub sends `state-change` event (with playerName and location)
+    - We were updating, but timing was wrong
+  - **The Fix**: IGNORE `join` events completely, ONLY handle `state-change` events
+    - `LobbyV2.jsx:200-222` - Removed `action === 'join'` from condition
+    - Added explicit logging for join events (ignored)
+    - Only add/update players on `state-change` events
+    - Continue using `leave`/`timeout` events to remove players
+  - **Why This Works**: state-change events always have the player's state data
+  - **Correct Flow**:
+    1. Player subscribes with withPresence: true
+    2. Player calls setState() with {playerName, location}
+    3. PubNub sends `state-change` event to all subscribers
+    4. We add player with their real name and location
+    5. Never process the `join` event at all
+  - **Timeline of Fixes**:
+    - v3.2.4-v3.3.1: All focused on timing of setState - WRONG APPROACH
+    - v3.3.2: Fixed event handling logic - CORRECT FIX
+
+## [3.3.1] - 2026-01-10
+
+### Fixed
+
+- **CRITICAL: Added 500ms propagation delay (INCOMPLETE FIX)**
+  - Wrong approach - tried to solve with timing delays
+  - Real issue was event handling logic (fixed in v3.3.2)
+
+## [3.3.0] - 2026-01-10
+
+### Fixed
+
+- **CRITICAL: Fixed "Anonymous players" bug (INCOMPLETE FIX)**
+  - Made `subscribe()` return a Promise that resolves when setState completes
+  - Fixed local race condition but didn't account for distributed system propagation
+  - See v3.3.1 for complete fix
+
+## [3.2.9] - 2026-01-10
+
+### Changed
+
+- Removed colons from all field labels in Create Game modal
+- Removed redundant "Game Privacy:" label for Private checkbox
+- Simplified checkbox layout with better vertical alignment
+
+## [3.2.8] - 2026-01-10
+
+### Changed
+
+- Vertically aligned "Game Privacy:" label with checkbox in Create Game modal
+- Added `.checkbox-group` CSS class for proper flex layout
+
+## [3.2.7] - 2026-01-10
+
+### Changed
+
+- Rearranged Create Game modal fields to match user-provided screenshot
+- Moved Player Assistance Modes from right column to left column
+- Moved Player Mode from left column to top of right column
+- Final layout: Left (Game Name, Emoji Theme, Tiles, Assistance) / Right (Player Mode, Privacy, Finish Positions, Max Players)
+
+## [3.2.6] - 2026-01-10
+
+### Fixed
+
+- **CRITICAL: Second attempt at fixing "Anonymous players" bug**
+  - Previous fix (v3.2.4) was incomplete - bug still occurred
+  - New root cause identified: setState only called on PNConnectedCategory event
+  - If already connected, PNConnectedCategory won't fire again
+  - **Fix**: Added setState call IMMEDIATELY after subscribe() at usePubNub.js:118-132
+  - Don't wait for status event that may never come
+  - **Files changed**:
+    - `client/src/hooks/usePubNub.js:118-132` - Added immediate setState after subscribe
+
+## [3.2.5] - 2026-01-10
+
+### Fixed
+
+- Fixed Create Game modal layout issues from user screenshots
+- Radio buttons no longer appear oval/oblong (added min-width/min-height)
+- Right-side fields now properly left-justified
+- Single player mode no longer collapses layout
+- Emoji Theme dropdown now uses styled appearance matching other fields
+- Changed default Player Assistance Mode to "Verified Matches (easiest)"
+
+## [3.2.4] - 2026-01-10
+
+### Fixed
+
+- **CRITICAL: Fixed "Anonymous players" bug in lobby presence**
+  - Players were showing as "Anonymous" in the "Who's Here" widget
+  - Root cause: Race condition in presence state setting
+  - `usePubNub.js` was using 100ms setTimeout before calling `setState()`
+  - Other players' `hereNow()` calls happened before `setState()` completed
+  - **Fix**: Removed setTimeout, `setState()` now called immediately on `PNConnectedCategory`
+  - Added comprehensive test suite in `client/src/__tests__/presence.test.js`
+  - **Files changed**:
+    - `client/src/hooks/usePubNub.js:84-100` - Removed setTimeout(100ms)
+    - `client/src/components/LobbyV2.jsx:67-89` - Added detailed logging
+    - `client/src/__tests__/presence.test.js` - New test file with 6 tests
+  - **Regression prevention**: Test suite includes race condition simulation
+  - **Manual verification**: Open 2 browser windows, both should show real names
+
+## [3.2.3] - 2026-01-10
+
+### Changed
+
+- Restructured Create Game modal to match screenshot layout
+  - Emoji Theme and Private checkbox on same row
+  - Number of Tiles and Finish Positions aligned on same row
+  - Player Mode and Player Assistance Modes side-by-side
+
+## [3.2.2] - 2026-01-10
+
+### Fixed
+
+- Fixed Cancel button in Create Game modal not dismissing the dialog
+  - LobbyV2.jsx was passing `onClose` prop but CreateGameModal expected `onCancel`
+
+## [3.2.1] - 2026-01-10
+
+### Changed
+
+- Removed accordion from Create Game modal, exposed Advanced Options directly
+- Moved Private checkbox to right column under "Game Privacy"
+- Restyled checkbox to match radio buttons with blue color accents (#528dfa)
+- Added blue color gradients throughout Create Game dialog
+- Vertically aligned Number of Tiles and Finish Positions fields
+
+## [3.2.0] - 2026-01-10
+
+### Changed
+
+- Redesigned Create Game modal with two-column layout (800px width)
+- Changed from 500px to 800px modal width to eliminate vertical scrolling
+- Added accordion for Player Assistance Modes (progressive disclosure)
+- Fixed footer stays visible, no scrolling needed on 768px+ screens
+
 ## [3.0.0] - TBD
 
 ### ⚠️ BREAKING CHANGES

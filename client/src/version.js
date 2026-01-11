@@ -7,7 +7,7 @@
  * - PATCH: Bug fixes, small tweaks (e.g., 1.0.1)
  */
 
-export const APP_VERSION = '3.0.0';
+export const APP_VERSION = '3.2.8';
 export const MUSIC_VERSION = '1.0.0';
 
 /**

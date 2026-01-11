@@ -24,6 +24,7 @@ function gameToChannelFields(gameData) {
     placementCount: gameData.placementCount,
     tilePinningEnabled: gameData.tilePinningEnabled || false,
     verifiedPositionsEnabled: gameData.verifiedPositionsEnabled || false,
+    inviteOnly: gameData.inviteOnly || false, // NEW: Include invite-only flag
     tiles: gameData.tiles ? JSON.stringify(gameData.tiles) : null,
     goalOrder: gameData.goalOrder ? JSON.stringify(gameData.goalOrder) : null,
     initialOrder: gameData.initialOrder ? JSON.stringify(gameData.initialOrder) : null,
@@ -104,6 +105,7 @@ async function getGameMetadata(pubnub, gameId) {
       placementCount: custom.placementCount,
       tilePinningEnabled: custom.tilePinningEnabled,
       verifiedPositionsEnabled: custom.verifiedPositionsEnabled,
+      inviteOnly: custom.inviteOnly || false, // NEW: Include invite-only flag
       tiles: custom.tiles ? JSON.parse(custom.tiles) : null,
       goalOrder: custom.goalOrder ? JSON.parse(custom.goalOrder) : null,
       initialOrder: custom.initialOrder ? JSON.parse(custom.initialOrder) : null,
@@ -132,7 +134,7 @@ async function getGameMetadata(pubnub, gameId) {
  * @param {Object} gameData - Game metadata object
  * @returns {Promise<void>}
  */
-async function setGameMetadata(pubnub, gameId, gameData) {
+async function setGameMetadata(pubnub, gameId, gameData, channelType = undefined) {
   try {
     const channelId = `game.${gameId}`;
     const customFields = gameToChannelFields(gameData);
@@ -140,14 +142,19 @@ async function setGameMetadata(pubnub, gameId, gameData) {
     // Add phase field for consistency
     customFields.phase = gameData.phase;
 
+    console.log(`[storage.setGameMetadata] gameId: ${gameId}, channelType: ${channelType}, inviteOnly: ${gameData.inviteOnly}`);
+
     await pubnub.objects.setChannelMetadata({
       channel: channelId,
       data: {
         name: gameData.gameName || `Game ${gameId}`,
+        type: channelType, // "private" for invite-only games, undefined for public
         status: gameData.phase, // Use basic status field for filtering
         custom: customFields
       }
     });
+
+    console.log(`[storage.setGameMetadata] Channel metadata set successfully for ${channelId}`);
   } catch (error) {
     console.error('[storage.setGameMetadata] Error:', error);
     throw error;
@@ -254,7 +261,9 @@ async function addPlayerToGame(pubnub, playerId, gameId, role = 'player', initia
       finishTT: initialGameState.finishTT || null,
       placement: initialGameState.placement || null,
       currentOrder: initialGameState.currentOrder || null,
-      correctnessHistory: initialGameState.correctnessHistory || []
+      correctnessHistory: initialGameState.correctnessHistory || [],
+      // Merge extra fields (status, invitedAt, etc.) for private game invitations
+      ...initialGameState
     });
 
     await pubnub.objects.setMemberships({

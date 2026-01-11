@@ -5,6 +5,7 @@ import PlayerBoard from './PlayerBoard';
 import PlayerName from './PlayerName';
 import GameOverModal from './GameOverModal';
 import ConfirmDialog from './ConfirmDialog';
+import InvitePlayersPanel from './InvitePlayersPanel';
 import {
   playCountdownBeep,
   playGameStartSound,
@@ -44,6 +45,8 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
   const [showGameOver, setShowGameOver] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [exitConfirmMessage, setExitConfirmMessage] = useState('');
+  const [showGameDeleted, setShowGameDeleted] = useState(false);
+  const [gameDeletedReason, setGameDeletedReason] = useState('');
 
   // Loading states
   const [isStartingGame, setIsStartingGame] = useState(false);
@@ -51,6 +54,10 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
 
   // Music state
   const [musicMuted, setMusicMuted] = useState(musicPlayer.isMuted);
+
+  // Invitation tracking for private games
+  const [lobbyPlayers, setLobbyPlayers] = useState([]);
+  const [invitedPlayers, setInvitedPlayers] = useState({}); // Map of playerId → status
 
   // PubNub connection
   const { pubnub, publish, subscribe, isConnected, error: pubnubError } = usePubNub(pubnubConfig);
@@ -129,34 +136,47 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
     const gameChannel = `game.${gameId}`;
     const adminChannel = `admin.${gameId}`;
 
-    // Fetch recent history from admin channel to catch any missed messages
-    pubnub.history({
-      channel: adminChannel,
-      count: 10,
-      stringifiedTimeToken: true
-    }).then(response => {
-      // Process any messages we might have missed
-      response.messages.forEach(entry => {
-        const message = entry.entry;
-        console.log('History message:', message);
+    let unsubscribeAdmin;
+    let unsubscribeGame;
 
-        if (message.type === 'COUNTDOWN' && message.countdown === 3 && message.tiles) {
-          setTiles(message.tiles);
-          setInitialOrder(message.initialOrder);
-          setGamePhase('COUNTDOWN');
-          setCountdownValue(message.countdown);
-        }
+    // Async setup function
+    (async () => {
+      // Fetch recent history from admin channel to catch any missed messages
+      pubnub.history({
+        channel: adminChannel,
+        count: 10,
+        stringifiedTimeToken: true
+      }).then(response => {
+        // Process any messages we might have missed
+        response.messages.forEach(entry => {
+          const message = entry.entry;
+          console.log('History message:', message);
+
+          if (message.type === 'COUNTDOWN' && message.countdown === 3 && message.tiles) {
+            setTiles(message.tiles);
+            setInitialOrder(message.initialOrder);
+            setGamePhase('COUNTDOWN');
+            setCountdownValue(message.countdown);
+          }
+        });
+      }).catch(error => {
+        console.log('Error fetching history:', error);
       });
-    }).catch(error => {
-      console.log('Error fetching history:', error);
-    });
 
-    // Subscribe to admin channel for game lifecycle events
-    const unsubscribeAdmin = subscribe(adminChannel, (event) => {
+      // Subscribe to admin channel for game lifecycle events
+      unsubscribeAdmin = await subscribe(adminChannel, (event) => {
       const message = event.message;
       console.log('Admin message:', message);
 
       if (message.type === 'PLAYER_JOINED') {
+        console.log('[Game] PLAYER_JOINED received:', {
+          messagePlayerId: message.playerId,
+          currentPlayerId: playerId,
+          playerIds: message.playerIds,
+          playerNames: message.playerNames,
+          playerLocations: message.playerLocations
+        });
+
         // Play sound - different sound if it's you vs. another player
         if (message.playerId === playerId) {
           playYouJoinedSound();
@@ -165,11 +185,15 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
         }
 
         // Update gameState with new playerIds
-        setGameState(prev => ({
-          ...prev,
-          playerIds: message.playerIds,
-          playerNames: message.playerNames
-        }));
+        setGameState(prev => {
+          console.log('[Game] Updating gameState with new playerIds:', message.playerIds);
+          return {
+            ...prev,
+            playerIds: message.playerIds,
+            playerNames: message.playerNames,
+            playerLocations: message.playerLocations // NEW: Include playerLocations
+          };
+        });
 
         // Update player roster when a player joins
         setPlayerStates(prev => {
@@ -180,6 +204,7 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
             if (!updated[pid]) {
               const displayName = message.playerNames?.[pid] || `Player ${pid.slice(-4)}`;
               const location = message.playerLocations?.[pid] || null;
+              console.log('[Game] Adding new player to roster:', { pid, displayName, location });
               updated[pid] = {
                 playerId: pid,
                 playerName: displayName,
@@ -335,53 +360,76 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
           // Didn't finish - play loser sound
           playLoserSound();
         }
+      } else if (message.type === 'PLAYER_INVITED') {
+        // Host sent invitation - track status
+        setInvitedPlayers(prev => ({
+          ...prev,
+          [message.playerId]: 'INVITED'
+        }));
+      } else if (message.type === 'INVITATION_ACCEPTED') {
+        // Player accepted invitation - update status
+        setInvitedPlayers(prev => ({
+          ...prev,
+          [message.playerId]: 'JOINED'
+        }));
+      } else if (message.type === 'INVITATION_DENIED') {
+        // Player denied invitation - update status
+        setInvitedPlayers(prev => ({
+          ...prev,
+          [message.playerId]: 'DENIED'
+        }));
+      } else if (message.type === 'GAME_DELETED') {
+        // Game was deleted (host left)
+        setGameDeletedReason(message.reason || 'Game has been deleted.');
+        setShowGameDeleted(true);
       }
-    });
+      });
 
-    // Subscribe to game channel for progress updates
-    const unsubscribeGame = subscribe(gameChannel, (event) => {
-      const message = event.message;
-      console.log('Game message:', message);
+      // Subscribe to game channel for progress updates
+      unsubscribeGame = await subscribe(gameChannel, (event) => {
+        const message = event.message;
+        console.log('Game message:', message);
 
-      if (message.type === 'PROGRESS_UPDATE') {
-        setPlayerStates(prev => {
-          const existingPlayer = prev[message.playerId];
+        if (message.type === 'PROGRESS_UPDATE') {
+          setPlayerStates(prev => {
+            const existingPlayer = prev[message.playerId];
 
-          // If we don't have this player yet, initialize them with current state
-          if (!existingPlayer) {
+            // If we don't have this player yet, initialize them with current state
+            if (!existingPlayer) {
+              return {
+                ...prev,
+                [message.playerId]: {
+                  playerId: message.playerId,
+                  playerName: `Player ${message.playerId.slice(-4)}`, // Use last 4 chars as name
+                  currentOrder: null, // Don't show other players' positions
+                  moveCount: message.moveCount,
+                  positionsCorrect: message.positionsCorrect,
+                  correctnessHistory: [message.positionsCorrect]
+                }
+              };
+            }
+
+            // Update existing player
             return {
               ...prev,
               [message.playerId]: {
-                playerId: message.playerId,
-                playerName: `Player ${message.playerId.slice(-4)}`, // Use last 4 chars as name
-                currentOrder: null, // Don't show other players' positions
+                ...existingPlayer,
                 moveCount: message.moveCount,
                 positionsCorrect: message.positionsCorrect,
-                correctnessHistory: [message.positionsCorrect]
+                correctnessHistory: [
+                  ...(existingPlayer.correctnessHistory || []),
+                  message.positionsCorrect
+                ]
               }
             };
-          }
-
-          // Update existing player
-          return {
-            ...prev,
-            [message.playerId]: {
-              ...existingPlayer,
-              moveCount: message.moveCount,
-              positionsCorrect: message.positionsCorrect,
-              correctnessHistory: [
-                ...(existingPlayer.correctnessHistory || []),
-                message.positionsCorrect
-              ]
-            }
-          };
-        });
-      }
-    });
+          });
+        }
+      });
+    })();
 
     return () => {
-      unsubscribeAdmin();
-      unsubscribeGame();
+      if (unsubscribeAdmin) unsubscribeAdmin();
+      if (unsubscribeGame) unsubscribeGame();
     };
   }, [isConnected, gameId, playerId, subscribe, pubnub]);
 
@@ -463,6 +511,125 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
       alert(`Failed to update name: ${err.message}`);
     }
   };
+
+  // Handle game deleted dialog confirmation
+  const handleGameDeletedConfirm = useCallback(() => {
+    setShowGameDeleted(false);
+    onLeave(); // Return to lobby
+  }, [onLeave]);
+
+  // Fetch lobby players for invite panel
+  const fetchLobbyPlayers = useCallback(async () => {
+    if (!pubnub) {
+      console.log('[Game.fetchLobbyPlayers] No pubnub instance');
+      return;
+    }
+
+    console.log('[Game.fetchLobbyPlayers] Fetching lobby players...');
+
+    try {
+      const result = await pubnub.hereNow({
+        channels: ['lobby'],
+        includeUUIDs: true,
+        includeState: true
+      });
+
+      const occupants = result.channels?.lobby?.occupants || [];
+      console.log('[Game.fetchLobbyPlayers] Found occupants:', occupants.length);
+
+      // Filter out current player and any already joined players
+      const currentPlayerIds = gameState?.playerIds || [];
+      const availablePlayers = occupants
+        .filter(occ => !currentPlayerIds.includes(occ.uuid))
+        .map(occ => ({
+          uuid: occ.uuid,
+          playerName: occ.state?.playerName || 'Unknown',
+          location: occ.state?.location
+        }));
+
+      console.log('[Game.fetchLobbyPlayers] Available players after filtering:', availablePlayers.length, availablePlayers);
+      setLobbyPlayers(availablePlayers);
+    } catch (error) {
+      console.error('[Game] Error fetching lobby players:', error);
+    }
+  }, [pubnub, gameState?.playerIds]);
+
+  // Subscribe to lobby presence events for invite-only games
+  useEffect(() => {
+    console.log('[Game.useEffect] Checking conditions for lobby presence subscription:', {
+      hasPubnub: !!pubnub,
+      inviteOnly: gameState?.inviteOnly,
+      isCreator,
+      phase: gameState?.phase
+    });
+
+    if (!pubnub || !gameState?.inviteOnly || !isCreator) {
+      console.log('[Game.useEffect] Not subscribing to lobby presence - conditions not met');
+      return;
+    }
+    if (gameState.phase !== 'CREATED') {
+      console.log('[Game.useEffect] Not subscribing to lobby presence - phase is not CREATED');
+      return;
+    }
+
+    console.log('[Game.useEffect] Subscribing to lobby presence for invite-only game');
+
+    let unsubscribeLobby;
+
+    // Async setup
+    (async () => {
+      // Initial snapshot
+      fetchLobbyPlayers();
+
+      // Subscribe to lobby presence events
+      unsubscribeLobby = await subscribe('lobby', (event) => {
+        console.log('[Game] Lobby event received:', event);
+
+        // Handle presence events
+        if (event.action) {
+          const presenceEvent = event;
+          console.log('[Game] Lobby presence event:', {
+            action: presenceEvent.action,
+            uuid: presenceEvent.uuid,
+            state: presenceEvent.state
+          });
+
+          const currentPlayerIds = gameState?.playerIds || [];
+
+          if (presenceEvent.action === 'join') {
+            // Player joined lobby - add to available players if not already in game
+            if (!currentPlayerIds.includes(presenceEvent.uuid)) {
+              const newPlayer = {
+                uuid: presenceEvent.uuid,
+                playerName: presenceEvent.state?.playerName || 'Unknown',
+                location: presenceEvent.state?.location
+              };
+              console.log('[Game] Adding player to lobby list:', newPlayer);
+
+              setLobbyPlayers(prev => {
+                // Avoid duplicates
+                if (prev.some(p => p.uuid === presenceEvent.uuid)) {
+                  return prev;
+                }
+                return [...prev, newPlayer];
+              });
+            }
+          } else if (presenceEvent.action === 'leave' || presenceEvent.action === 'timeout') {
+            // Player left lobby - remove from available players
+            console.log('[Game] Removing player from lobby list:', presenceEvent.uuid);
+            setLobbyPlayers(prev => prev.filter(p => p.uuid !== presenceEvent.uuid));
+          }
+        }
+      }, {
+        withPresence: true
+      });
+    })();
+
+    return () => {
+      console.log('[Game.useEffect] Unsubscribing from lobby presence');
+      if (unsubscribeLobby) unsubscribeLobby();
+    };
+  }, [pubnub, subscribe, gameState?.inviteOnly, gameState?.phase, gameState?.playerIds, isCreator, fetchLobbyPlayers]);
 
   // Handle player move
   const handleMove = useCallback(async (newOrder) => {
@@ -620,6 +787,27 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
               </div>
             </div>
           )}
+
+          {/* Invite Players Panel - Only for host of invite-only games */}
+          {(() => {
+            const shouldShow = isCreator && gameState?.inviteOnly;
+            console.log('[Game.render] InvitePlayersPanel visibility check:', {
+              isCreator,
+              inviteOnly: gameState?.inviteOnly,
+              shouldShow,
+              lobbyPlayersCount: lobbyPlayers.length
+            });
+            return shouldShow ? (
+              <InvitePlayersPanel
+                pubnub={pubnub}
+                gameId={gameId}
+                hostPlayerId={playerId}
+                lobbyPlayers={lobbyPlayers}
+                invitedPlayers={invitedPlayers}
+                onRefresh={fetchLobbyPlayers}
+              />
+            ) : null;
+          })()}
         </div>
 
         {/* Exit confirmation dialog */}
@@ -817,6 +1005,17 @@ export default function Game({ gameConfig, pubnubConfig, onLeave }) {
         cancelText="Stay"
         onConfirm={confirmLeaveGame}
         onCancel={() => setShowExitConfirm(false)}
+      />
+
+      {/* Game deleted notification dialog */}
+      <ConfirmDialog
+        isOpen={showGameDeleted}
+        title="Game Ended"
+        message={gameDeletedReason}
+        confirmText="OK"
+        cancelText=""
+        onConfirm={handleGameDeletedConfirm}
+        onCancel={handleGameDeletedConfirm}
       />
     </div>
   );

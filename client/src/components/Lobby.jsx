@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createGame, joinGame as joinGameApi, listGames } from '../utils/gameApi';
 import { usePubNub } from '../hooks/usePubNub';
 import CreateGameModal from './CreateGameModal';
 import HelpModal from './HelpModal';
 import PlayerName from './PlayerName';
+import InvitationList from './InvitationList';
 import { getPlayerLocation } from '../utils/playerStorage';
 import { EMOJI_THEMES } from '../utils/emojiThemes';
 import musicPlayer from '../utils/musicPlayer';
@@ -111,6 +112,9 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [musicMuted, setMusicMuted] = useState(musicPlayer.isMuted);
+  const [invitations, setInvitations] = useState([]);
+  const [invitationCount, setInvitationCount] = useState(0);
+  const [gameFilter, setGameFilter] = useState('public');  // 'public' | 'private'
 
   const { isConnected, subscribe, unsubscribe, hereNow, pubnub } = usePubNub(pubnubConfig);
 
@@ -145,7 +149,7 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
 
   // Fetch initial game list
   const fetchGameList = useCallback(async () => {
-    if (!pubnub) {
+    if (!pubnub || !playerInfo?.playerId) {
       console.log('PubNub not initialized yet, skipping game list fetch');
       return;
     }
@@ -155,13 +159,44 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
       const result = await listGames(pubnub);
       console.log('Game list result:', result);
       console.log('Number of games:', result.games?.length || 0);
-      setAvailableGames(result.games || []);
+
+      // For each private game, check if user has membership
+      const gamesWithMembership = await Promise.all(
+        (result.games || []).map(async (game) => {
+          if (!game.inviteOnly) {
+            return { ...game, hasInvitation: false };
+          }
+
+          // Check if user has membership in this private game
+          try {
+            const membersResponse = await pubnub.objects.getChannelMembers({
+              channel: `game.${game.gameId}`,
+              include: { UUIDFields: true, customFields: true }
+            });
+
+            const userMembership = membersResponse.data?.find(
+              m => m.uuid.id === playerInfo.playerId
+            );
+
+            return {
+              ...game,
+              hasInvitation: !!userMembership,
+              membershipStatus: userMembership?.custom?.status
+            };
+          } catch (error) {
+            console.error(`[fetchGameList] Error checking membership for ${game.gameId}:`, error);
+            return { ...game, hasInvitation: false };
+          }
+        })
+      );
+
+      setAvailableGames(gamesWithMembership);
     } catch (err) {
       console.error('Error fetching game list:', err);
       // Set empty array on error to prevent undefined issues
       setAvailableGames([]);
     }
-  }, [pubnub]);
+  }, [pubnub, playerInfo?.playerId]);
 
   // Handle presence events (join, leave, timeout)
   const handlePresenceEvent = useCallback((event) => {
@@ -258,10 +293,43 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
     }));
   }, []);
 
-  // Subscribe to lobby channel with presence
+  // Handle messages on personal user channel
+  const handleUserMessage = useCallback((event) => {
+    const message = event.message;
+
+    if (message.type === 'GAME_INVITATION') {
+      console.log('[Lobby] Received game invitation:', message);
+
+      // Add to invitations state
+      setInvitations(prev => {
+        // Avoid duplicates
+        const exists = prev.some(inv => inv.gameId === message.gameId);
+        if (exists) return prev;
+
+        return [...prev, {
+          gameId: message.gameId,
+          gameName: message.gameName,
+          hostPlayerId: message.hostPlayerId,
+          hostName: message.hostName,
+          tileCount: message.tileCount,
+          emojiTheme: message.emojiTheme,
+          maxPlayers: message.maxPlayers,
+          invitedAt: message.invitedAt
+        }];
+      });
+
+      // Increment notification count
+      setInvitationCount(prev => prev + 1);
+
+      // Show toast notification (TODO: implement toast component)
+      console.log(`[Lobby] Invitation from ${message.hostName} to ${message.gameName || 'a game'}!`);
+    }
+  }, []);
+
+  // Subscribe to lobby channel with presence and user channel
   useEffect(() => {
     console.log('Lobby useEffect - isConnected:', isConnected);
-    if (!isConnected) return;
+    if (!isConnected || !playerInfo?.playerId) return;
 
     console.log('Subscribing to lobby channel with presence...');
     const unsubscribeLobby = subscribe(
@@ -308,20 +376,80 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
       }
     );
 
-    console.log('Subscription complete, fetching initial presence...');
+    // Subscribe to personal user channel for invitations
+    const userChannel = `user.${playerInfo.playerId}`;
+    console.log(`Subscribing to user channel: ${userChannel}`);
+    const unsubscribeUser = subscribe(userChannel, handleUserMessage);
+
+    console.log('Subscriptions complete, fetching initial presence...');
     // Fetch initial presence data
     fetchLobbyPresence();
 
     return () => {
       unsubscribeLobby();
+      unsubscribeUser();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, playerInfo.playerName]);
+  }, [isConnected, playerInfo.playerName, playerInfo.playerId]);
 
   // Fetch game list separately - only once when component mounts
   useEffect(() => {
     fetchGameList();
   }, []); // Empty deps = only runs once on mount
+
+  // Fetch existing invitations on mount
+  useEffect(() => {
+    if (!pubnub || !playerInfo?.playerId) return;
+
+    async function fetchInvitations() {
+      try {
+        console.log('[Lobby] Fetching existing invitations...');
+
+        // Get user's memberships
+        const response = await pubnub.objects.getMemberships({
+          uuid: playerInfo.playerId,
+          include: {
+            channelFields: true,
+            customChannelFields: true,
+            customFields: true
+          }
+        });
+
+        const invites = [];
+
+        for (const membership of response.data || []) {
+          const channelId = membership.channel?.id;
+
+          // Only process game channels - ensure channelId is a string
+          if (!channelId || typeof channelId !== 'string' || !channelId.startsWith('game.')) continue;
+
+          const status = membership.custom?.status;
+          const inviteOnly = membership.channel.custom?.inviteOnly;
+
+          // Only count INVITED status in invite-only games
+          if (status === 'INVITED' && inviteOnly) {
+            invites.push({
+              gameId: membership.channel.custom.gameId,
+              gameName: membership.channel.name,
+              tileCount: membership.channel.custom.tileCount,
+              emojiTheme: membership.channel.custom.emojiTheme,
+              maxPlayers: membership.channel.custom.maxPlayers,
+              invitedAt: membership.custom.invitedAt || Date.now()
+            });
+          }
+        }
+
+        console.log(`[Lobby] Found ${invites.length} pending invitations`);
+        setInvitations(invites);
+        setInvitationCount(invites.length);
+
+      } catch (error) {
+        console.error('[Lobby] Error fetching invitations:', error);
+      }
+    }
+
+    fetchInvitations();
+  }, [pubnub, playerInfo?.playerId]);
 
   const handleCreateGameWithOptions = async (options) => {
     setLoading(true);
@@ -384,6 +512,67 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
     }
   };
 
+  const handleAcceptInvitation = useCallback(async (gameId) => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const location = getPlayerLocation();
+
+      // Call joinGame API (which now handles INVITED → JOINED transition)
+      await joinGameApi(gameId, playerInfo.playerId, playerInfo.playerName, location);
+
+      // Remove from invitations list
+      setInvitations(prev => prev.filter(inv => inv.gameId !== gameId));
+      setInvitationCount(prev => Math.max(0, prev - 1));
+
+      // Navigate to game
+      onJoinGame({
+        gameId,
+        playerId: playerInfo.playerId,
+        playerName: playerInfo.playerName,
+        isCreator: false
+      });
+
+    } catch (err) {
+      console.error('[Lobby] Error accepting invitation:', err);
+      setError(`Failed to accept invitation: ${err.message}`);
+      setLoading(false);
+    }
+  }, [playerInfo, onJoinGame]);
+
+  const handleRejectInvitation = useCallback(async (gameId) => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/.netlify/functions/game?operation=reject_invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId,
+          playerId: playerInfo.playerId
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to reject invitation');
+      }
+
+      // Remove from invitations list
+      setInvitations(prev => prev.filter(inv => inv.gameId !== gameId));
+      setInvitationCount(prev => Math.max(0, prev - 1));
+
+      setLoading(false);
+
+    } catch (err) {
+      console.error('[Lobby] Error rejecting invitation:', err);
+      setError(`Failed to reject invitation: ${err.message}`);
+      setLoading(false);
+    }
+  }, [playerInfo.playerId]);
+
   const handleJoinExistingGame = async (existingGameId) => {
     setLoading(true);
     setError('');
@@ -421,9 +610,23 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
   // Filter out current player and get display names
   const otherPlayers = lobbyPlayers.filter(occupant => occupant.uuid !== playerInfo.playerId);
 
-  // Filter out single-player games
-  const visibleGames = availableGames.filter(game => (game.maxPlayers || 10) > 1);
-  console.log('Available games:', availableGames.length, 'Visible games:', visibleGames.length);
+  // Filter games based on public/private tab and single-player exclusion
+  const visibleGames = useMemo(() => {
+    return availableGames.filter(game => {
+      // Always filter out single-player games
+      if ((game.maxPlayers || 10) <= 1) return false;
+
+      if (gameFilter === 'public') {
+        // Public tab: show games where inviteOnly is false or undefined
+        return !game.inviteOnly;
+      } else {
+        // Private tab: show games where inviteOnly is true AND user has membership
+        return game.inviteOnly && game.hasInvitation;
+      }
+    });
+  }, [availableGames, gameFilter]);
+
+  console.log('Available games:', availableGames.length, 'Visible games:', visibleGames.length, 'Filter:', gameFilter);
 
   return (
     <div className="lobby">
@@ -486,6 +689,16 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
 
         {/* Right Column: Available Games */}
         <div className="lobby-section">
+          {/* Show invitations if any exist */}
+          {invitations.length > 0 && (
+            <InvitationList
+              invitations={invitations}
+              onAccept={handleAcceptInvitation}
+              onReject={handleRejectInvitation}
+              loading={loading}
+            />
+          )}
+
           <div className="section-header">
             <h2>Available Games ({visibleGames.length})</h2>
             <button
@@ -494,6 +707,25 @@ export default function Lobby({ playerInfo, pubnubConfig, onJoinGame, onLeave, o
               disabled={loading}
             >
               + Create New Game
+            </button>
+          </div>
+
+          {/* Game Filter Tabs */}
+          <div className="game-tabs">
+            <button
+              className={`tab-btn ${gameFilter === 'public' ? 'active' : ''}`}
+              onClick={() => setGameFilter('public')}
+            >
+              Public Games
+            </button>
+            <button
+              className={`tab-btn ${gameFilter === 'private' ? 'active' : ''}`}
+              onClick={() => setGameFilter('private')}
+            >
+              Private Games
+              {invitationCount > 0 && (
+                <span className="notification-badge">{invitationCount}</span>
+              )}
             </button>
           </div>
 

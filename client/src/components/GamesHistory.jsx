@@ -40,9 +40,9 @@ async function fetchCompletedGames(pubnub, limit = 10, page = null) {
     // Process game channels
     if (response.data) {
       for (const channel of response.data) {
-        if (channel.id.startsWith('game.') &&
-            channel.custom &&
-            channel.custom.gameState) {
+        // Only process game channels - ensure channel.id is a string
+        if (!channel.id || typeof channel.id !== 'string' || !channel.id.startsWith('game.')) continue;
+        if (channel.custom && channel.custom.gameState) {
 
           const gameState = JSON.parse(channel.custom.gameState);
 

@@ -11,7 +11,7 @@ import { getCountryFlag } from '../utils/geolocation';
 export default function PlayerName({ name, location, className = '' }) {
   // Extract country code from location string
   const getCountryCodeFromLocation = (locationStr) => {
-    if (!locationStr) return null;
+    if (!locationStr || typeof locationStr !== 'string') return null;
 
     // For "USA - AZ" format
     if (locationStr.startsWith('USA')) {
@@ -48,7 +48,7 @@ export default function PlayerName({ name, location, className = '' }) {
   // For USA, show flag + state abbreviation (e.g., "🇺🇸 AZ")
   // For other countries, just show flag
   let displayText = name;
-  if (location && location.startsWith('USA -')) {
+  if (location && typeof location === 'string' && location.startsWith('USA -')) {
     const stateCode = location.split('-')[1]?.trim();
     displayText = `${flag} ${stateCode} ${name}`;
   } else if (flag) {
