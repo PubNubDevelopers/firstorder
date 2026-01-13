@@ -199,8 +199,6 @@ async function createTournament(pubnub, body) {
 
     // 2. Create tournament Channel metadata
     const tournamentMetadata = {
-      tournamentId,
-      tournamentName: options.tournamentName || null,
       tileCount: options.tileCount,
       emojiTheme: options.emojiTheme,
       maxPlayers: options.maxPlayers,
