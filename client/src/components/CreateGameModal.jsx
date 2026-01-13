@@ -5,15 +5,16 @@ import { getRandomMovieName } from '../utils/movieNames';
 /**
  * CreateGameModal component - modal for creating new games with options
  */
-export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) {
+export default function CreateGameModal({ playerInfo, onCreateGame, onCreateTournament, onCancel }) {
   // Generate random movie name once when component mounts
   const defaultMovieName = useMemo(() => getRandomMovieName(), []);
 
   const [tileCount, setTileCount] = useState(5);
   const [emojiTheme, setEmojiTheme] = useState('food');
-  const [playerMode, setPlayerMode] = useState('multiplayer'); // 'single' or 'multiplayer'
+  const [playerMode, setPlayerMode] = useState('multiplayer'); // 'single', 'multiplayer', or 'tournament'
   const [maxPlayers, setMaxPlayers] = useState(2);
   const [placementCount, setPlacementCount] = useState(2); // Default for 2 players
+  const [advancementRule, setAdvancementRule] = useState(2); // For tournament mode: 1-4 players advance
   const [gameName, setGameName] = useState(defaultMovieName);
   const [gameplayMode, setGameplayMode] = useState('verified'); // 'none', 'pinning', 'verified' - default to easiest
   const [inviteOnly, setInviteOnly] = useState(false);
@@ -34,6 +35,11 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
           setPlacementCount(3);
         }
       }
+    } else if (playerMode === 'tournament') {
+      // Tournament mode: set default maxPlayers to 16 if not already set
+      if (maxPlayers < 8) {
+        setMaxPlayers(16);
+      }
     }
   }, [maxPlayers, playerMode, placementCount]);
 
@@ -41,24 +47,54 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
     setLoading(true);
     setError('');
 
-    const gameOptions = {
-      tileCount,
-      emojiTheme,
-      maxPlayers: playerMode === 'single' ? 1 : maxPlayers,
-      placementCount: playerMode === 'single' ? 1 : placementCount,
-      gameName: gameName.trim() || null,
-      tilePinningEnabled: gameplayMode === 'pinning',
-      verifiedPositionsEnabled: gameplayMode === 'verified',
-      inviteOnly
-    };
+    if (playerMode === 'tournament') {
+      // Tournament mode
+      if (maxPlayers < 8 || maxPlayers > 100) {
+        setError('Tournament must have 8-100 players');
+        setLoading(false);
+        return;
+      }
 
-    console.log('[CreateGameModal] Creating game with options:', gameOptions);
+      const tournamentOptions = {
+        tileCount,
+        emojiTheme,
+        maxPlayers,
+        advancementRule,
+        gameName: gameName.trim() || null,
+        tilePinningEnabled: gameplayMode === 'pinning',
+        verifiedPositionsEnabled: gameplayMode === 'verified',
+        inviteOnly
+      };
 
-    try {
-      await onCreateGame(gameOptions);
-    } catch (err) {
-      setError(err.message || 'Failed to create game');
-      setLoading(false);
+      console.log('[CreateGameModal] Creating tournament with options:', tournamentOptions);
+
+      try {
+        await onCreateTournament(tournamentOptions);
+      } catch (err) {
+        setError(err.message || 'Failed to create tournament');
+        setLoading(false);
+      }
+    } else {
+      // Regular game mode
+      const gameOptions = {
+        tileCount,
+        emojiTheme,
+        maxPlayers: playerMode === 'single' ? 1 : maxPlayers,
+        placementCount: playerMode === 'single' ? 1 : placementCount,
+        gameName: gameName.trim() || null,
+        tilePinningEnabled: gameplayMode === 'pinning',
+        verifiedPositionsEnabled: gameplayMode === 'verified',
+        inviteOnly
+      };
+
+      console.log('[CreateGameModal] Creating game with options:', gameOptions);
+
+      try {
+        await onCreateGame(gameOptions);
+      } catch (err) {
+        setError(err.message || 'Failed to create game');
+        setLoading(false);
+      }
     }
   };
 
@@ -89,7 +125,7 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
           </div>
         )}
 
-        <h2>Create New Game</h2>
+        <h2>{playerMode === 'tournament' ? 'Create New Tournament' : 'Create New Game'}</h2>
 
         {error && <div className="error-message">{error}</div>}
 
@@ -231,11 +267,22 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
                     />
                     <span>Single Player</span>
                   </label>
+                  <label className="radio-label">
+                    <input
+                      type="radio"
+                      name="playerMode"
+                      value="tournament"
+                      checked={playerMode === 'tournament'}
+                      onChange={(e) => handlePlayerModeChange(e.target.value)}
+                      disabled={loading}
+                    />
+                    <span>Tournament</span>
+                  </label>
                 </div>
               </div>
 
               {/* Private Checkbox */}
-              {playerMode === 'multiplayer' && (
+              {(playerMode === 'multiplayer' || playerMode === 'tournament') && (
                 <div className="form-group">
                   <label className="checkbox-label">
                     <input
@@ -289,7 +336,7 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
                 </div>
               )}
 
-              {/* Max Players - Only show for multiplayer */}
+              {/* Max Players - Show for multiplayer and tournament */}
               {playerMode === 'multiplayer' && (
                 <div className="form-group">
                   <label>Max Players</label>
@@ -307,6 +354,44 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
                   />
                 </div>
               )}
+
+              {/* Tournament-specific fields */}
+              {playerMode === 'tournament' && (
+                <>
+                  <div className="form-group">
+                    <label>Max Players</label>
+                    <input
+                      type="number"
+                      min="8"
+                      max="100"
+                      value={maxPlayers}
+                      onChange={(e) => setMaxPlayers(
+                        Math.min(100, Math.max(8, parseInt(e.target.value) || 16))
+                      )}
+                      disabled={loading}
+                      className="styled-input"
+                      style={{ width: '150px' }}
+                    />
+                    <span className="hint">Minimum 8 players required</span>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Advancement Rule</label>
+                    <select
+                      value={advancementRule}
+                      onChange={(e) => setAdvancementRule(parseInt(e.target.value))}
+                      disabled={loading}
+                      className="styled-select"
+                    >
+                      <option value="1">Top 1 advances</option>
+                      <option value="2">Top 2 advance</option>
+                      <option value="3">Top 3 advance</option>
+                      <option value="4">Top 4 advance</option>
+                    </select>
+                    <span className="hint">How many players advance from each game per round</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -322,7 +407,7 @@ export default function CreateGameModal({ playerInfo, onCreateGame, onCancel }) 
               onClick={handleCreate}
               disabled={loading}
             >
-              {loading ? 'Creating...' : 'Create Game'}
+              {loading ? 'Creating...' : (playerMode === 'tournament' ? 'Create Tournament' : 'Create Game')}
             </button>
           </div>
         </div>

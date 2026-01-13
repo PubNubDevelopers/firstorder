@@ -176,7 +176,7 @@ export async function listGames(pubnub) {
           customFields: true,
           statusField: true
         },
-        filter: "status == 'CREATED'" // Server-side filter for performance
+        filter: "id LIKE 'game.*' AND id NOT LIKE 't.*' AND status == 'CREATED'" // Server-side filter excluding tournaments
       };
 
       if (page) {

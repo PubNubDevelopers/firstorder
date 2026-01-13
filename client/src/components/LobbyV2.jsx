@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createGame, joinGame as joinGameApi, listGames } from '../utils/gameApi';
+import { createTournament } from '../utils/tournamentApi';
 import { usePubNub } from '../hooks/usePubNub';
 import CreateGameModal from './CreateGameModal';
 import HelpModal from './HelpModal';
@@ -19,7 +20,7 @@ import '../styles/lobby-v2.css';
  * - Left Sidebar: Quick actions, presence, recent games
  * - Center: Game grid with cards
  */
-export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave, onViewHistory }) {
+export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreateTournament, onLeave, onViewHistory }) {
   console.log('[LobbyV2] Component render - playerInfo:', playerInfo?.playerName, 'pubnubConfig.userId:', pubnubConfig?.userId);
 
   const [error, setError] = useState('');
@@ -533,6 +534,31 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
     }
   };
 
+  // Handle create tournament
+  const handleCreateTournament = async (options) => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const location = await getPlayerLocation();
+      const result = await createTournament(
+        playerInfo.playerId,
+        playerInfo.playerName,
+        options,
+        location
+      );
+
+      console.log('[LobbyV2] Tournament created successfully:', result.tournamentId);
+
+      setShowCreateModal(false);
+      onCreateTournament(result.tournamentId, true);
+    } catch (err) {
+      setError(err.message || 'Failed to create tournament');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle join game
   const handleJoinGame = async (gameId) => {
     setLoading(true);
@@ -835,6 +861,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onLeave,
       {showCreateModal && (
         <CreateGameModal
           onCreateGame={handleCreateGame}
+          onCreateTournament={handleCreateTournament}
           onCancel={() => setShowCreateModal(false)}
           loading={loading}
         />
