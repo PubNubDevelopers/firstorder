@@ -4,8 +4,8 @@
  * Mirrors gameApi.js patterns for tournament operations
  */
 
-const FUNCTION_BASE_URL = import.meta.env.VITE_PUBNUB_FUNCTION_URL;
-const TOURNAMENT_FUNCTION_URL = FUNCTION_BASE_URL?.replace('/game', '/tournament');
+// Use relative URL for tournament function to work across all deployments
+const TOURNAMENT_FUNCTION_URL = '/.netlify/functions/tournament';
 
 /**
  * Create a new tournament
