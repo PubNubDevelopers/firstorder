@@ -82,9 +82,10 @@ export async function listTournaments(pubnub) {
         limit: 100,
         include: {
           customFields: true,
-          statusField: true
+          statusField: true,
+          typeField: true
         },
-        filter: "id LIKE 't.*' AND type == 'tournament' AND status == 'CREATED'"
+        filter: "type == 'tournament' && status == 'CREATED'"
       };
 
       if (page) {
