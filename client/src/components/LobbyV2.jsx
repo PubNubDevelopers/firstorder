@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createGame, joinGame as joinGameApi, listGames } from '../utils/gameApi';
-import { createTournament } from '../utils/tournamentApi';
+import { createTournament, listTournaments } from '../utils/tournamentApi';
 import { usePubNub } from '../hooks/usePubNub';
 import CreateGameModal from './CreateGameModal';
 import HelpModal from './HelpModal';
@@ -28,6 +28,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
   const [leavingLobby, setLeavingLobby] = useState(false);
   const [lobbyPlayers, setLobbyPlayers] = useState([]);
   const [availableGames, setAvailableGames] = useState([]);
+  const [availableTournaments, setAvailableTournaments] = useState([]);
   const [recentGames, setRecentGames] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -36,6 +37,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
   const [invitations, setInvitations] = useState([]);
   const [invitationCount, setInvitationCount] = useState(0);
   const [gameFilter, setGameFilter] = useState('public');  // 'public' | 'private'
+  const [viewMode, setViewMode] = useState('games');  // 'games' | 'tournaments'
 
   const initializedRef = useRef(false);
   const gameListFetchedRef = useRef(false);
@@ -139,6 +141,55 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
       setAvailableGames([]);
     }
   }, [playerInfo?.playerId]); // Added playerInfo dependency
+
+  // Fetch tournament list
+  const fetchTournamentList = useCallback(async () => {
+    if (!pubnubRef.current || !playerInfo?.playerId) {
+      console.log('[fetchTournamentList] PubNub not ready yet');
+      return;
+    }
+
+    try {
+      console.log('[fetchTournamentList] Fetching tournament list with PubNub...');
+      const result = await listTournaments(pubnubRef.current);
+      console.log('[fetchTournamentList] Got tournaments:', result.tournaments?.length || 0);
+
+      // For each private tournament, check if user has membership
+      const tournamentsWithMembership = await Promise.all(
+        (result.tournaments || []).map(async (tournament) => {
+          if (!tournament.inviteOnly) {
+            return { ...tournament, hasInvitation: false };
+          }
+
+          // Check if user has membership in this private tournament
+          try {
+            const membersResponse = await pubnubRef.current.objects.getChannelMembers({
+              channel: `t.${tournament.tournamentId}`,
+              include: { UUIDFields: true, customFields: true }
+            });
+
+            const userMembership = membersResponse.data?.find(
+              m => m.uuid.id === playerInfo.playerId
+            );
+
+            return {
+              ...tournament,
+              hasInvitation: !!userMembership,
+              membershipStatus: userMembership?.custom?.status
+            };
+          } catch (error) {
+            console.error(`[fetchTournamentList] Error checking membership for ${tournament.tournamentId}:`, error);
+            return { ...tournament, hasInvitation: false };
+          }
+        })
+      );
+
+      setAvailableTournaments(tournamentsWithMembership);
+    } catch (err) {
+      console.error('[fetchTournamentList] Error:', err);
+      setAvailableTournaments([]);
+    }
+  }, [playerInfo?.playerId]);
 
   // Fetch recent completed games (for sidebar widget)
   const fetchRecentGames = useCallback(async () => {
@@ -299,7 +350,8 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
       playerNames: message.playerNames || {},
       playerLocations: message.playerLocations || {},
       playerCount: message.playerIds.length,
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
+      inviteOnly: message.inviteOnly || false
     };
 
     setAvailableGames(prev => {
@@ -308,6 +360,35 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
       updated.sort((a, b) => b.createdAt - a.createdAt);
       return updated;
     });
+  }, []);
+
+  // Handle real-time tournament events
+  const handleTournamentCreated = useCallback((message) => {
+    const newTournament = {
+      tournamentId: message.tournamentId,
+      tournamentName: message.tournamentName || null,
+      tileCount: message.tileCount || 5,
+      emojiTheme: message.emojiTheme || 'food',
+      maxPlayers: message.maxPlayers || 16,
+      advancementRule: message.advancementRule || 2,
+      status: 'CREATED',
+      playerCount: message.playerCount || 1,
+      createdAt: message.createdAt,
+      hostPlayerId: message.hostPlayerId,
+      hostName: message.hostName,
+      inviteOnly: message.inviteOnly || false
+    };
+
+    setAvailableTournaments(prev => {
+      if (prev.some(t => t.tournamentId === message.tournamentId)) return prev;
+      const updated = [...prev, newTournament];
+      updated.sort((a, b) => b.createdAt - a.createdAt);
+      return updated;
+    });
+  }, []);
+
+  const handleTournamentStarted = useCallback((message) => {
+    setAvailableTournaments(prev => prev.filter(t => t.tournamentId !== message.tournamentId));
   }, []);
 
   const handleGameStarted = useCallback((message) => {
@@ -453,6 +534,12 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
               case 'GAME_NAME_UPDATED':
                 handleGameNameUpdated(message);
                 break;
+              case 'TOURNAMENT_CREATED':
+                handleTournamentCreated(message);
+                break;
+              case 'TOURNAMENT_STARTED':
+                handleTournamentStarted(message);
+                break;
             }
           },
           {
@@ -480,11 +567,12 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
         console.log('[LobbyV2] Fetching initial presence (after 500ms propagation delay)');
         await fetchLobbyPresence();
 
-        // Fetch game list and recent games - ONLY ONCE per lobby session
+        // Fetch game list, tournament list, and recent games - ONLY ONCE per lobby session
         if (!gameListFetchedRef.current && pubnubRef.current) {
-          console.log('[LobbyV2] *** FETCHING GAME LIST FOR THE FIRST AND ONLY TIME ***');
+          console.log('[LobbyV2] *** FETCHING GAME LIST AND TOURNAMENT LIST FOR THE FIRST AND ONLY TIME ***');
           gameListFetchedRef.current = true;
           fetchGameList();
+          fetchTournamentList();
           fetchRecentGames();
         }
       } catch (error) {
@@ -745,6 +833,19 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
     });
   }, [availableGames, gameFilter]);
 
+  // Filter tournaments based on public/private tab
+  const visibleTournaments = useMemo(() => {
+    return availableTournaments.filter(tournament => {
+      if (gameFilter === 'public') {
+        // Public tab: show tournaments where inviteOnly is false or undefined
+        return !tournament.inviteOnly;
+      } else {
+        // Private tab: show tournaments where inviteOnly is true AND user has membership
+        return tournament.inviteOnly && tournament.hasInvitation;
+      }
+    });
+  }, [availableTournaments, gameFilter]);
+
   // Format lobby players with names from state
   // CRITICAL FIX: lobbyPlayers already has playerName at top level (not nested under state)
   // The fetchLobbyPresence function flattens the structure: { uuid, playerName, location }
@@ -829,31 +930,92 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
             loading={loading}
           />
 
-          {/* Public/Private Game Tabs */}
+          {/* Games/Tournaments View Switcher */}
+          <div className="view-mode-tabs">
+            <button
+              className={`view-mode-btn ${viewMode === 'games' ? 'active' : ''}`}
+              onClick={() => setViewMode('games')}
+            >
+              🎮 Games ({visibleGames.length})
+            </button>
+            <button
+              className={`view-mode-btn ${viewMode === 'tournaments' ? 'active' : ''}`}
+              onClick={() => setViewMode('tournaments')}
+            >
+              🏆 Tournaments ({visibleTournaments.length})
+            </button>
+          </div>
+
+          {/* Public/Private Tabs */}
           <div className="game-tabs">
             <button
               className={`tab-btn ${gameFilter === 'public' ? 'active' : ''}`}
               onClick={() => setGameFilter('public')}
             >
-              Public Games
+              Public {viewMode === 'games' ? 'Games' : 'Tournaments'}
             </button>
             <button
               className={`tab-btn ${gameFilter === 'private' ? 'active' : ''}`}
               onClick={() => setGameFilter('private')}
             >
-              Private Games
-              {invitationCount > 0 && (
+              Private {viewMode === 'games' ? 'Games' : 'Tournaments'}
+              {invitationCount > 0 && viewMode === 'games' && (
                 <span className="notification-badge">{invitationCount}</span>
               )}
             </button>
           </div>
 
-          {/* Game Grid with filtered games */}
-          <GameGrid
-            games={visibleGames}
-            onJoinGame={handleJoinGame}
-            loading={loading}
-          />
+          {/* Game Grid or Tournament Grid */}
+          {viewMode === 'games' ? (
+            <GameGrid
+              games={visibleGames}
+              onJoinGame={handleJoinGame}
+              loading={loading}
+            />
+          ) : (
+            <div className="tournament-grid">
+              {visibleTournaments.length === 0 ? (
+                <div className="empty-state">
+                  <p>No tournaments available</p>
+                  <p className="hint">Create a tournament to get started!</p>
+                </div>
+              ) : (
+                visibleTournaments.map(tournament => (
+                  <div key={tournament.tournamentId} className="tournament-card">
+                    <div className="tournament-header">
+                      <h3>{tournament.tournamentName || `Tournament ${tournament.tournamentId}`}</h3>
+                      <span className="tournament-badge">🏆</span>
+                    </div>
+                    <div className="tournament-details">
+                      <div className="detail-row">
+                        <span className="label">Host:</span>
+                        <span className="value">{tournament.hostName}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="label">Players:</span>
+                        <span className="value">{tournament.playerCount} / {tournament.maxPlayers}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="label">Advancement:</span>
+                        <span className="value">Top {tournament.advancementRule}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="label">Theme:</span>
+                        <span className="value">{tournament.emojiTheme} • {tournament.tileCount} tiles</span>
+                      </div>
+                    </div>
+                    <button
+                      className="join-tournament-btn"
+                      onClick={() => onCreateTournament(tournament.tournamentId, false)}
+                      disabled={loading}
+                    >
+                      {tournament.hasInvitation ? 'View Tournament' : 'Join Tournament'}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </main>
       </div>
 
