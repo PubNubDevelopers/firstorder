@@ -173,6 +173,40 @@ export async function listTournaments(pubnub) {
 }
 
 /**
+ * Join a tournament
+ * @param {string} tournamentId - Tournament ID
+ * @param {string} playerId - Player's unique ID
+ * @param {string} playerName - Player's display name
+ * @param {Object} location - Player location data from geolocation
+ * @returns {Promise<{success: boolean, tournamentId: string, status: string}>}
+ */
+export async function joinTournament(tournamentId, playerId, playerName, location) {
+  if (!TOURNAMENT_FUNCTION_URL) {
+    throw new Error('TOURNAMENT_FUNCTION_URL not configured');
+  }
+
+  const response = await fetch(`${TOURNAMENT_FUNCTION_URL}?operation=join_tournament`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tournamentId,
+      playerId,
+      playerName,
+      location: location || null
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to join tournament');
+  }
+
+  return response.json();
+}
+
+/**
  * Invite a player to a tournament
  * @param {string} tournamentId - Tournament ID
  * @param {string} hostPlayerId - Host player ID

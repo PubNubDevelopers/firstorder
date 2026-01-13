@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createGame, joinGame as joinGameApi, listGames } from '../utils/gameApi';
-import { createTournament, listTournaments } from '../utils/tournamentApi';
+import { createTournament, joinTournament as joinTournamentApi, listTournaments } from '../utils/tournamentApi';
 import { usePubNub } from '../hooks/usePubNub';
 import CreateGameModal from './CreateGameModal';
 import HelpModal from './HelpModal';
@@ -669,6 +669,22 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
     }
   };
 
+  // Handle join tournament
+  const handleJoinTournament = async (tournamentId) => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const location = await getPlayerLocation();
+      await joinTournamentApi(tournamentId, playerInfo.playerId, playerInfo.playerName, location);
+
+      onCreateTournament(tournamentId, false);
+    } catch (err) {
+      setError(err.message || 'Failed to join tournament');
+      setLoading(false);
+    }
+  };
+
   // Handle quickplay - join first available game or create one
   const handleQuickplay = async () => {
     setQuickplaySearching(true);
@@ -1006,7 +1022,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
                     </div>
                     <button
                       className="join-tournament-btn"
-                      onClick={() => onCreateTournament(tournament.tournamentId, false)}
+                      onClick={() => handleJoinTournament(tournament.tournamentId)}
                       disabled={loading}
                     >
                       {tournament.hasInvitation ? 'View Tournament' : 'Join Tournament'}

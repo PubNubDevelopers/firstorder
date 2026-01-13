@@ -87,6 +87,16 @@ export default function TournamentSetup({ tournamentConfig, playerInfo, pubnubCo
               ...prev,
               [message.playerId]: 'DENIED'
             }));
+          } else if (message.type === 'PLAYER_JOINED_TOURNAMENT') {
+            console.log('[TournamentSetup] Player joined tournament:', message.playerId);
+            setInvitedPlayers(prev => ({
+              ...prev,
+              [message.playerId]: 'JOINED'
+            }));
+            // Reload tournament status to get updated member list
+            getTournamentStatus(pubnub, tournamentId).then(({ members: membersData }) => {
+              setMembers(membersData);
+            });
           }
         }
       );

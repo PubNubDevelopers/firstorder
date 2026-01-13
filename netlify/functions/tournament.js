@@ -115,6 +115,9 @@ exports.handler = async (event) => {
       case 'create_tournament':
         result = await createTournament(pubnub, body);
         break;
+      case 'join_tournament':
+        result = await joinTournament(pubnub, body);
+        break;
       case 'invite_tournament_player':
         result = await inviteTournamentPlayer(pubnub, body);
         break;
@@ -126,7 +129,7 @@ exports.handler = async (event) => {
           statusCode: 400,
           headers,
           body: JSON.stringify({
-            error: 'Invalid operation. Use: create_tournament, invite_tournament_player, or get_tournament_status'
+            error: 'Invalid operation. Use: create_tournament, join_tournament, invite_tournament_player, or get_tournament_status'
           })
         };
     }
@@ -292,6 +295,147 @@ async function createTournament(pubnub, body) {
     return {
       statusCode: 500,
       body: { error: 'Failed to create tournament', details: error.message }
+    };
+  }
+}
+
+/**
+ * Join a tournament (public tournaments only)
+ */
+async function joinTournament(pubnub, body) {
+  const { tournamentId, playerId, playerName, location } = body;
+
+  if (!tournamentId || !playerId) {
+    return {
+      statusCode: 400,
+      body: { error: 'Missing tournamentId or playerId' }
+    };
+  }
+
+  try {
+    // 1. Get tournament metadata
+    const tournamentResponse = await pubnub.objects.getChannelMetadata({
+      channel: `t.${tournamentId}`,
+      include: { customFields: true }
+    });
+
+    const tournamentMetadata = tournamentResponse.data?.custom;
+
+    if (!tournamentMetadata) {
+      return {
+        statusCode: 404,
+        body: { error: 'Tournament not found' }
+      };
+    }
+
+    if (tournamentResponse.data.status !== 'CREATED') {
+      return {
+        statusCode: 400,
+        body: { error: 'Cannot join tournament after it has started' }
+      };
+    }
+
+    if (tournamentMetadata.inviteOnly) {
+      return {
+        statusCode: 403,
+        body: { error: 'This tournament is invite-only' }
+      };
+    }
+
+    // 2. Check if tournament is full
+    const membersResponse = await pubnub.objects.getChannelMembers({
+      channel: `t.${tournamentId}`,
+      include: { UUIDFields: true, customFields: true }
+    });
+
+    const currentMembers = membersResponse.data || [];
+    const joinedCount = currentMembers.filter(m => m.custom?.status === 'JOINED').length;
+
+    if (joinedCount >= tournamentMetadata.maxPlayers) {
+      return {
+        statusCode: 400,
+        body: { error: 'Tournament is full' }
+      };
+    }
+
+    // 3. Check if player is already a member
+    const existingMembership = currentMembers.find(m => m.uuid.id === playerId);
+
+    if (existingMembership) {
+      const currentStatus = existingMembership.custom?.status;
+      if (currentStatus === 'JOINED') {
+        return {
+          statusCode: 200,
+          body: { success: true, message: 'Already joined', status: 'JOINED' }
+        };
+      }
+    }
+
+    // 4. Create/update User object
+    const existingUser = await storage.getPlayer(pubnub, playerId);
+    if (!existingUser) {
+      await storage.setPlayer(pubnub, playerId, {
+        name: playerName || playerId,
+        playerLocation: location ? JSON.stringify(location) : null
+      });
+    }
+
+    // 5. Add player as member with status="JOINED"
+    await pubnub.objects.setMemberships({
+      uuid: playerId,
+      channels: [{
+        id: `t.${tournamentId}`,
+        custom: {
+          role: 'player',
+          status: 'JOINED',
+          joinedAt: Date.now(),
+          currentRound: 0,
+          currentGameId: null,
+          eliminatedInRound: null,
+          finalPlacement: null,
+          roundsPlayed: 0
+        }
+      }]
+    });
+
+    // 6. Publish to admin channel
+    await pubnub.publish({
+      channel: `admin.t.${tournamentId}`,
+      message: {
+        v: 1,
+        type: 'PLAYER_JOINED_TOURNAMENT',
+        tournamentId,
+        playerId,
+        playerName: playerName || playerId,
+        status: 'JOINED',
+        joinedCount: joinedCount + 1
+      }
+    });
+
+    // 7. Publish to lobby (update player count)
+    await pubnub.publish({
+      channel: 'lobby',
+      message: {
+        v: 1,
+        type: 'TOURNAMENT_PLAYER_JOINED',
+        tournamentId,
+        playerCount: joinedCount + 1
+      }
+    });
+
+    return {
+      statusCode: 200,
+      body: {
+        success: true,
+        tournamentId,
+        status: 'JOINED'
+      }
+    };
+  } catch (error) {
+    console.error('[joinTournament] Error:', error);
+    return {
+      statusCode: 500,
+      body: { error: 'Failed to join tournament', details: error.message }
     };
   }
 }
