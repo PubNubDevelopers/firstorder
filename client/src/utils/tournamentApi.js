@@ -5,6 +5,7 @@
  */
 
 const FUNCTION_BASE_URL = import.meta.env.VITE_PUBNUB_FUNCTION_URL;
+const TOURNAMENT_FUNCTION_URL = FUNCTION_BASE_URL?.replace('/game', '/tournament');
 
 /**
  * Create a new tournament
@@ -15,11 +16,11 @@ const FUNCTION_BASE_URL = import.meta.env.VITE_PUBNUB_FUNCTION_URL;
  * @returns {Promise<{success: boolean, tournamentId: string, tournamentName: string, status: string}>}
  */
 export async function createTournament(playerId, playerName, options, location) {
-  if (!FUNCTION_BASE_URL) {
+  if (!TOURNAMENT_FUNCTION_URL) {
     throw new Error('VITE_PUBNUB_FUNCTION_URL not configured in .env');
   }
 
-  const response = await fetch(`${FUNCTION_BASE_URL}?operation=create_tournament`, {
+  const response = await fetch(`${TOURNAMENT_FUNCTION_URL}?operation=create_tournament`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -178,11 +179,11 @@ export async function listTournaments(pubnub) {
  * @returns {Promise<{success: boolean, targetPlayerId: string, tournamentId: string, status: string}>}
  */
 export async function inviteTournamentPlayer(tournamentId, hostPlayerId, targetPlayerId) {
-  if (!FUNCTION_BASE_URL) {
+  if (!TOURNAMENT_FUNCTION_URL) {
     throw new Error('VITE_PUBNUB_FUNCTION_URL not configured in .env');
   }
 
-  const response = await fetch(`${FUNCTION_BASE_URL}?operation=invite_tournament_player`, {
+  const response = await fetch(`${TOURNAMENT_FUNCTION_URL}?operation=invite_tournament_player`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

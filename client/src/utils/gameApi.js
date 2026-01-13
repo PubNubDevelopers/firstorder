@@ -176,7 +176,7 @@ export async function listGames(pubnub) {
           customFields: true,
           statusField: true
         },
-        filter: "id LIKE 'game.*' AND id NOT LIKE 't.*' AND status == 'CREATED'" // Server-side filter excluding tournaments
+        filter: "status == 'CREATED'" // Server-side filter for performance
       };
 
       if (page) {
@@ -197,7 +197,9 @@ export async function listGames(pubnub) {
       if (response.data) {
         for (const channel of response.data) {
           // Only process game channels - ensure channel.id is a string
+          // Exclude tournament channels (t.*)
           if (!channel.id || typeof channel.id !== 'string' || !channel.id.startsWith('game.')) continue;
+          if (channel.id.startsWith('t.')) continue; // Skip tournament channels
           if (channel.custom) {
             const custom = channel.custom;
 
