@@ -12,9 +12,9 @@ export default function VersionCheck() {
   useEffect(() => {
     const checkVersion = async () => {
       try {
-        // Fetch version.js from server with cache-busting timestamp
+        // Fetch version.json from public directory with cache-busting timestamp
         const timestamp = Date.now();
-        const response = await fetch(`/src/version.js?t=${timestamp}`, {
+        const response = await fetch(`/version.json?t=${timestamp}`, {
           cache: 'no-store'
         });
 
@@ -23,13 +23,10 @@ export default function VersionCheck() {
           return;
         }
 
-        const text = await response.text();
+        const data = await response.json();
 
-        // Parse version from the file content
-        const versionMatch = text.match(/export const APP_VERSION = ['"]([^'"]+)['"]/);
-
-        if (versionMatch && versionMatch[1]) {
-          const remoteVersion = versionMatch[1];
+        if (data.appVersion) {
+          const remoteVersion = data.appVersion;
           setServerVersion(remoteVersion);
 
           console.log(`[VersionCheck] Local: ${APP_VERSION}, Server: ${remoteVersion}`);
