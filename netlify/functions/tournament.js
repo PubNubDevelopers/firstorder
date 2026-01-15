@@ -189,13 +189,10 @@ async function createTournament(pubnub, body) {
 
   try {
     // 1. Create/update User object for host
-    const existingUser = await storage.getPlayer(pubnub, playerId);
-    if (!existingUser) {
-      await storage.setPlayer(pubnub, playerId, {
-        name: playerName || playerId,
-        playerLocation: location ? JSON.stringify(location) : null
-      });
-    }
+    await storage.setPlayer(pubnub, playerId, {
+      name: playerName || playerId,
+      playerLocation: location ? JSON.stringify(location) : null
+    });
 
     // 2. Create tournament Channel metadata
     const tournamentMetadata = {
@@ -370,13 +367,10 @@ async function joinTournament(pubnub, body) {
     }
 
     // 4. Create/update User object
-    const existingUser = await storage.getPlayer(pubnub, playerId);
-    if (!existingUser) {
-      await storage.setPlayer(pubnub, playerId, {
-        name: playerName || playerId,
-        playerLocation: location ? JSON.stringify(location) : null
-      });
-    }
+    await storage.setPlayer(pubnub, playerId, {
+      name: playerName || playerId,
+      playerLocation: location ? JSON.stringify(location) : null
+    });
 
     // 5. Add player as member with status="JOINED"
     await pubnub.objects.setMemberships({

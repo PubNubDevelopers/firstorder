@@ -545,7 +545,7 @@ export default function LobbyV2({ playerInfo, pubnubConfig, onJoinGame, onCreate
           {
             withPresence: true,
             presenceState: {
-              playerName: playerInfo.playerName,
+              playerName: playerInfo.playerName || 'Anonymous',
               location: locationString
             }
           }

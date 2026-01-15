@@ -211,9 +211,8 @@ export default function TournamentSetup({ tournamentConfig, playerInfo, pubnubCo
                 >
                   <div className="player-name-wrapper">
                     <PlayerName
-                      playerName={member.uuid.name}
+                      name={member.uuid.name}
                       location={member.uuid.custom?.playerLocation}
-                      isCurrentPlayer={isCurrentPlayer}
                     />
                     {role === 'host' && <span className="host-badge">👑 Host</span>}
                   </div>
